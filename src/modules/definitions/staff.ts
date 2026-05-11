@@ -44,7 +44,7 @@ const definition: ModuleDefinition = {
   workflowPosition: "SYSTEM",
   dependencies: [],
 
-  route: "/admin/staff",
+  route: "/admin/users",
   navLabel: "Staff",
   navOrder: 16,
 };

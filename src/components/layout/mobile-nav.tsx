@@ -58,7 +58,7 @@ export function MobileNav() {
   const items = roleNavItems[role] || roleNavItems.ADMIN;
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-white/95 backdrop-blur-md border-t border-stone-200/80 safe-area-bottom">
+    <nav className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-[#EEF4FD]/95 backdrop-blur-md border-t border-blue-100/80 safe-area-bottom">
       <div className="flex items-center justify-around px-2 py-1.5">
         {items.map((item) => {
           const isActive = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));

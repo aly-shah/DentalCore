@@ -90,13 +90,17 @@ export function Sidebar() {
   const navModules = useModuleNavigation();
   const role = user?.role || "ADMIN";
 
-  // Auto-collapse on resize
+  // Auto-collapse on resize. Below 768px we use the drawer (mobileOpen),
+  // so `collapsed` is irrelevant there — leaving it alone means the drawer
+  // renders with full labels (260px wide drawer can show text).
   useEffect(() => {
     const onResize = () => {
-      if (window.innerWidth < 768) {
-        setCollapsed(true);
+      const w = window.innerWidth;
+      if (w < 768) {
+        // Mobile: drawer mode. Keep collapsed=false so the drawer shows labels.
+        setCollapsed(false);
         setMobileOpen(false);
-      } else if (window.innerWidth < 1024) {
+      } else if (w < 1024) {
         setCollapsed(true);
       } else {
         setCollapsed(false);
@@ -115,6 +119,9 @@ export function Sidebar() {
   }
 
   const sidebarWidth = collapsed ? "w-[80px]" : "w-[264px]";
+  // Labels show when expanded OR when the mobile drawer is open
+  // (drawer is 260px wide so it has room for text).
+  const showLabels = !collapsed || mobileOpen;
 
   // Build nav items from module registry
   const navLayout = roleNavLayout[role] || roleNavLayout.ADMIN;
@@ -128,8 +135,8 @@ export function Sidebar() {
   const navContent = (
     <>
       {/* Brand */}
-      <div className={cn("flex items-center h-16 border-b border-stone-100 shrink-0", collapsed ? "justify-center px-2" : "px-5")}>
-        {collapsed ? (
+      <div className={cn("flex items-center h-16 border-b border-stone-100 shrink-0", !showLabels ? "justify-center px-2" : "px-5")}>
+        {!showLabels ? (
           <span className="text-sm font-bold tracking-tight text-blue-700">DC</span>
         ) : (
           <div className="min-w-0">
@@ -143,10 +150,10 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
         {ready && navLayout.map((group, gi) => (
           <div key={gi} className="mb-1">
-            {group.section && !collapsed && (
+            {group.section && showLabels && (
               <p className="px-3 py-2 mt-3 first:mt-0 text-[10px] font-semibold text-stone-400 uppercase tracking-widest">{group.section}</p>
             )}
-            {group.section && collapsed && <div className="my-2 mx-2 border-t border-stone-100" />}
+            {group.section && !showLabels && <div className="my-2 mx-2 border-t border-stone-100" />}
 
             {group.moduleIds.map((modId) => {
               const mod = moduleMap.get(modId);
@@ -166,12 +173,12 @@ export function Sidebar() {
                     className={cn(
                       "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                       isActive ? "bg-blue-50/80 text-blue-700 font-semibold" : "text-stone-500 hover:bg-stone-50 hover:text-stone-700",
-                      collapsed && "justify-center px-2"
+                      !showLabels && "justify-center px-2"
                     )}
-                    title={collapsed ? label : undefined}
+                    title={!showLabels ? label : undefined}
                   >
                     <Icon className={cn("w-5 h-5 shrink-0", isActive && "text-blue-600")} />
-                    {!collapsed && <span className="truncate">{label}</span>}
+                    {showLabels && <span className="truncate">{label}</span>}
                   </Link>
 
                   {/* Insert extra routes that go after this module */}
@@ -187,12 +194,12 @@ export function Sidebar() {
                           className={cn(
                             "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                             exActive ? "bg-blue-50 text-blue-700" : "text-stone-500 hover:bg-stone-50 hover:text-stone-700",
-                            collapsed && "justify-center px-2"
+                            !showLabels && "justify-center px-2"
                           )}
-                          title={collapsed ? extra.label : undefined}
+                          title={!showLabels ? extra.label : undefined}
                         >
                           <ExIcon className={cn("w-5 h-5 shrink-0", exActive && "text-blue-600")} />
-                          {!collapsed && <span className="truncate">{extra.label}</span>}
+                          {showLabels && <span className="truncate">{extra.label}</span>}
                         </Link>
                       );
                     })}
@@ -205,11 +212,11 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="border-t border-stone-100 px-2 py-2 space-y-0.5 shrink-0">
-        <Link href="/settings" className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-700 transition-all", collapsed && "justify-center px-2")}>
-          <Settings className="w-5 h-5 shrink-0" />{!collapsed && <span>Settings</span>}
+        <Link href="/settings" className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-700 transition-all", !showLabels && "justify-center px-2")}>
+          <Settings className="w-5 h-5 shrink-0" />{showLabels && <span>Settings</span>}
         </Link>
-        <button onClick={() => { logout(); window.location.href = "/login"; }} className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:bg-red-50 hover:text-red-600 transition-all w-full cursor-pointer", collapsed && "justify-center px-2")}>
-          <LogOut className="w-5 h-5 shrink-0" />{!collapsed && <span>Log Out</span>}
+        <button onClick={() => { logout(); window.location.href = "/login"; }} className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:bg-red-50 hover:text-red-600 transition-all w-full cursor-pointer", !showLabels && "justify-center px-2")}>
+          <LogOut className="w-5 h-5 shrink-0" />{showLabels && <span>Log Out</span>}
         </button>
       </div>
     </>
@@ -232,7 +239,7 @@ export function Sidebar() {
 
       {/* Sidebar */}
       <aside className={cn(
-        "fixed top-0 h-screen bg-white border-r border-stone-100 flex flex-col z-40 sidebar-transition",
+        "fixed top-0 h-screen bg-[#F4F8FE] border-r border-blue-100/70 flex flex-col z-40 sidebar-transition",
         "max-md:w-[260px]",
         mobileOpen ? "max-md:left-0" : "max-md:-left-[260px]",
         "md:left-0",

@@ -21,7 +21,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <ModuleProvider>
-      <div className="min-h-screen bg-[#FAFAF9]">
+      <div className="min-h-screen bg-gradient-to-b from-[#E6EEFA] via-[#EEF3FC] to-[#F1F5FC]">
         <Sidebar />
         <div className="content-transition" style={{ marginLeft: sidebarW }}>
           <Topbar />

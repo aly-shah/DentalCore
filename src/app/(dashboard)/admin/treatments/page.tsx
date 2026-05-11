@@ -51,7 +51,9 @@ export default function TreatmentsPage() {
   const [activeTab, setActiveTab] = useState("ALL");
   const [search, setSearch] = useState("");
   const { data: treatmentsResponse, isLoading } = useTreatments();
-  const treatments = (treatmentsResponse?.data || []) as Treatment[];
+  const treatments = (Array.isArray(treatmentsResponse?.data)
+    ? treatmentsResponse?.data
+    : []) as Treatment[];
 
   if (!access.canView) {
     return (
@@ -69,6 +71,7 @@ export default function TreatmentsPage() {
     );
   }
 
+  const q = search.toLowerCase();
   const filtered = treatments.filter((t) => {
     const matchesTab =
       activeTab === "ALL" ||
@@ -76,8 +79,8 @@ export default function TreatmentsPage() {
         ? t.category === TreatmentCategory.OTHER || t.category === TreatmentCategory.SURGICAL
         : t.category === activeTab);
     const matchesSearch =
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      t.description.toLowerCase().includes(search.toLowerCase());
+      (t.name ?? "").toLowerCase().includes(q) ||
+      (t.description ?? "").toLowerCase().includes(q);
     return matchesTab && matchesSearch;
   });
 
@@ -124,9 +127,9 @@ export default function TreatmentsPage() {
                     <Sparkles className="w-5 h-5 text-blue-600" />
                   </div>
                   <div>
-                    <p className="font-semibold text-stone-800 truncate min-w-0">{treatment.name}</p>
-                    <Badge variant={categoryBadge[treatment.category]} className="mt-1">
-                      {categoryLabel[treatment.category] || treatment.category}
+                    <p className="font-semibold text-stone-800 truncate min-w-0">{treatment.name || "Untitled treatment"}</p>
+                    <Badge variant={categoryBadge[treatment.category] || "default"} className="mt-1">
+                      {categoryLabel[treatment.category] || treatment.category || "Other"}
                     </Badge>
                   </div>
                 </div>
@@ -138,17 +141,21 @@ export default function TreatmentsPage() {
               </div>
 
               {/* Description */}
-              <p className="text-sm text-stone-500 line-clamp-2">{treatment.description}</p>
+              <p className="text-sm text-stone-500 line-clamp-2">
+                {treatment.description || (
+                  <span className="text-stone-300 italic">No description</span>
+                )}
+              </p>
 
               {/* Footer */}
               <div className="flex items-center justify-between pt-3 border-t border-stone-100">
                 <div className="flex items-center gap-1.5 text-sm text-stone-500">
                   <Clock className="w-4 h-4" />
-                  <span>{treatment.duration} min</span>
+                  <span>{treatment.duration ?? 0} min</span>
                 </div>
                 <div className="flex items-center gap-1.5 text-sm font-semibold text-stone-700">
                   <DollarSign className="w-4 h-4 text-blue-600" />
-                  <span>{formatCurrency(treatment.basePrice)}</span>
+                  <span>{formatCurrency(treatment.basePrice ?? 0)}</span>
                 </div>
               </div>
             </div>

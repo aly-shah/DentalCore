@@ -34,6 +34,12 @@ function getAptDoctorName(apt: Record<string, unknown>): string {
   if (d?.name) return String(d.name);
   return "Doctor";
 }
+function getAptPatientId(apt: Record<string, unknown>): string | null {
+  if (typeof apt.patientId === "string" && apt.patientId) return apt.patientId;
+  const p = apt.patient as Record<string, unknown> | undefined;
+  if (p && typeof p.id === "string" && p.id) return p.id;
+  return null;
+}
 
 const quickActions = [
   { label: "New Patient", icon: <UserPlus className="w-5 h-5" />, href: "/patients/new", dataId: "PATIENT-PROFILE-CREATE", bg: "bg-blue-50", text: "text-blue-600" },
@@ -109,29 +115,45 @@ export function AdminDashboard() {
             ) : todayApts.length === 0 ? (
               <div className="text-sm text-stone-400 py-8 text-center">No appointments scheduled for today.</div>
             ) : (
-              todayApts.map((apt) => (
-                <div
-                  key={apt.id as string}
-                  className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 sm:p-5 flex items-center gap-4 hover:shadow-md transition-shadow"
-                >
-                  <div className="min-w-[48px] sm:min-w-[56px] text-center">
-                    <p className="text-sm font-semibold text-stone-900">{(apt.startTime as string) || "—"}</p>
-                    <p className="text-xs text-stone-400">{(apt.endTime as string) || "—"}</p>
+              todayApts.map((apt) => {
+                const pid = getAptPatientId(apt);
+                const cls = `bg-white rounded-2xl border border-stone-100 shadow-sm p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 hover:shadow-md transition-shadow ${pid ? "cursor-pointer hover:border-blue-200" : ""}`;
+                const inner = (
+                  <>
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 sm:flex-1">
+                      <div className="shrink-0 min-w-[42px] sm:min-w-[52px] text-center">
+                        <p className="text-sm font-semibold text-stone-900 leading-tight">{(apt.startTime as string) || "—"}</p>
+                        <p className="text-[11px] text-stone-400 leading-tight">{(apt.endTime as string) || "—"}</p>
+                      </div>
+                      <div className="hidden sm:block w-px h-10 bg-stone-100" />
+                      <Avatar name={getAptPatientName(apt)} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-stone-900 truncate">{getAptPatientName(apt)}</p>
+                        <p className="text-xs text-stone-500 truncate">{getAptDoctorName(apt)}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap pl-[54px] sm:pl-0 sm:shrink-0">
+                      {(apt.type as string) ? (
+                        <Badge variant="info">{((apt.type as string) || "").replace(/_/g, " ")}</Badge>
+                      ) : null}
+                      <Badge
+                        variant={appointmentStatusColors[(apt.status as string) || ""] as "success" | "warning" | "danger" | "info" | "default"}
+                      >
+                        {((apt.status as string) || "").replace(/_/g, " ")}
+                      </Badge>
+                    </div>
+                  </>
+                );
+                return pid ? (
+                  <Link key={apt.id as string} href={`/patients/${pid}`} className={cls}>
+                    {inner}
+                  </Link>
+                ) : (
+                  <div key={apt.id as string} className={cls}>
+                    {inner}
                   </div>
-                  <div className="w-px h-10 bg-stone-100" />
-                  <Avatar name={getAptPatientName(apt)} size="sm" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-stone-900 truncate">{getAptPatientName(apt)}</p>
-                    <p className="text-xs text-stone-500">{getAptDoctorName(apt)}</p>
-                  </div>
-                  <Badge variant="info">{((apt.type as string) || "").replace("_", " ")}</Badge>
-                  <Badge
-                    variant={appointmentStatusColors[(apt.status as string) || ""] as "success" | "warning" | "danger" | "info" | "default"}
-                  >
-                    {((apt.status as string) || "").replace("_", " ")}
-                  </Badge>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>

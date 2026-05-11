@@ -44,7 +44,34 @@ export default function FollowUpsPage() {
   const { data: followUpsResponse, isLoading } = useFollowUps();
   const updateFollowUp = useUpdateFollowUp();
   const createFollowUp = useCreateFollowUp();
-  const followUps = (followUpsResponse?.data || []) as Array<{ id: string; patientName: string; doctorName: string; reason: string; dueDate: string; status: string }>;
+  // The API returns Prisma rows with nested patient/doctor objects — flatten and
+  // null-guard them here so the page never crashes on missing/odd data.
+  type RawFollowUp = {
+    id?: string;
+    patientId?: string | null;
+    doctorId?: string | null;
+    reason?: string | null;
+    dueDate?: string | null;
+    status?: string | null;
+    patient?: { firstName?: string | null; lastName?: string | null } | null;
+    doctor?: { name?: string | null } | null;
+  };
+  const rawFollowUps = Array.isArray(followUpsResponse?.data)
+    ? (followUpsResponse?.data as RawFollowUp[])
+    : [];
+  const followUps = rawFollowUps.map((f) => ({
+    id: f.id ?? "",
+    patientId: f.patientId ?? "",
+    doctorId: f.doctorId ?? "",
+    patientName:
+      [f.patient?.firstName, f.patient?.lastName].filter(Boolean).join(" ") ||
+      "Unknown patient",
+    doctorName: f.doctor?.name ?? "Unassigned",
+    reason: f.reason ?? "",
+    dueDate: f.dueDate ?? "",
+    dueDay: f.dueDate ? toClinicDay(f.dueDate) : "",
+    status: f.status ?? "PENDING",
+  }));
 
   const today = new Date();
   const todayStr = toClinicDay(today);
@@ -52,16 +79,18 @@ export default function FollowUpsPage() {
   weekEnd.setDate(weekEnd.getDate() + 7);
 
   const dueToday = followUps.filter(
-    (f) => f.dueDate === todayStr && f.status === "PENDING"
+    (f) => f.dueDay === todayStr && f.status === "PENDING"
   ).length;
   const overdueCount = followUps.filter(
     (f) =>
+      !!f.dueDate &&
       new Date(f.dueDate) < today &&
       f.status !== "COMPLETED" &&
       f.status !== "CANCELLED" &&
-      f.dueDate !== todayStr
+      f.dueDay !== todayStr
   ).length;
   const thisWeek = followUps.filter((f) => {
+    if (!f.dueDate) return false;
     const due = new Date(f.dueDate);
     return due >= today && due <= weekEnd && f.status === "PENDING";
   }).length;
@@ -71,26 +100,28 @@ export default function FollowUpsPage() {
 
   const filters = ["ALL", "PENDING", "COMPLETED", "MISSED", "CANCELLED"];
 
+  const q = search.toLowerCase();
   const filtered = followUps.filter((f) => {
     const matchesSearch =
-      f.patientName.toLowerCase().includes(search.toLowerCase()) ||
-      f.doctorName.toLowerCase().includes(search.toLowerCase()) ||
-      f.reason.toLowerCase().includes(search.toLowerCase());
+      f.patientName.toLowerCase().includes(q) ||
+      f.doctorName.toLowerCase().includes(q) ||
+      f.reason.toLowerCase().includes(q);
     const matchesStatus = activeFilter === "ALL" || f.status === activeFilter;
     return matchesSearch && matchesStatus;
   });
 
-  const isOverdue = (followUp: { dueDate: string; status: string }) => {
+  const isOverdue = (followUp: { dueDate: string; dueDay: string; status: string }) => {
     return (
+      !!followUp.dueDate &&
       new Date(followUp.dueDate) < today &&
       followUp.status !== "COMPLETED" &&
       followUp.status !== "CANCELLED" &&
-      followUp.dueDate !== todayStr
+      followUp.dueDay !== todayStr
     );
   };
 
-  const isDueToday = (followUp: { dueDate: string; status: string }) => {
-    return followUp.dueDate === todayStr && followUp.status === "PENDING";
+  const isDueToday = (followUp: { dueDay: string; status: string }) => {
+    return followUp.dueDay === todayStr && followUp.status === "PENDING";
   };
 
   if (isLoading) {
@@ -234,7 +265,7 @@ export default function FollowUpsPage() {
               {/* Due date */}
               <div className="flex items-center gap-2 text-xs text-stone-400 mb-4">
                 <CalendarClock className="w-3.5 h-3.5" />
-                <span>Due: {formatDate(followUp.dueDate)}</span>
+                <span>Due: {followUp.dueDate ? formatDate(followUp.dueDate) : "—"}</span>
               </div>
 
               {/* Actions */}
@@ -248,11 +279,10 @@ export default function FollowUpsPage() {
                       const dueDate = prompt("Enter new follow-up date (YYYY-MM-DD):");
                       if (dueDate) {
                         createFollowUp.mutate({
-                          patientName: followUp.patientName,
-                          doctorName: followUp.doctorName,
+                          patientId: followUp.patientId,
+                          doctorId: followUp.doctorId,
                           reason: followUp.reason,
                           dueDate,
-                          status: "PENDING",
                         });
                         emit(SystemEvents.FOLLOWUP_SCHEDULED, { patientName: followUp.patientName, dueDate });
                       }
@@ -284,11 +314,10 @@ export default function FollowUpsPage() {
                       if (dueDate) {
                         updateFollowUp.mutate({ id: followUp.id, data: { status: "CANCELLED" } });
                         createFollowUp.mutate({
-                          patientName: followUp.patientName,
-                          doctorName: followUp.doctorName,
+                          patientId: followUp.patientId,
+                          doctorId: followUp.doctorId,
                           reason: followUp.reason,
                           dueDate,
-                          status: "PENDING",
                         });
                         emit(SystemEvents.FOLLOWUP_SCHEDULED, { patientName: followUp.patientName, dueDate });
                       }

@@ -5,7 +5,7 @@ import { jwtVerify } from "jose";
 const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET || "");
 const COOKIE_NAME = "dentacore-session";
 
-const publicPaths = ["/login", "/signup", "/api/auth/login", "/api/auth/signup", "/portal", "/api/app/session", "/api/health"];
+const publicPaths = ["/login", "/signup", "/api/auth/login", "/api/auth/signup", "/portal", "/api/app/session", "/api/health", "/doctor-app"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

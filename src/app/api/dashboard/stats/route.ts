@@ -36,7 +36,9 @@ export async function GET(request: Request) {
 
     const baseStats = {
       todayAppointments,
+      appointments: todayAppointments,
       completedToday,
+      completed: completedToday,
       inProgress,
       waiting,
       noShows,
@@ -52,7 +54,9 @@ export async function GET(request: Request) {
           totalPatients,
           paidInvoicesAgg,
           pendingInvoicesAgg,
+          pendingInvoicesCount,
           overdueInvoices,
+          paymentsAgg,
           newLeads,
           availableRooms,
           occupiedRooms,
@@ -61,17 +65,27 @@ export async function GET(request: Request) {
           prisma.patient.count({ where: { isActive: true } }),
           prisma.invoice.aggregate({ where: { status: "PAID" }, _sum: { total: true } }),
           prisma.invoice.aggregate({ where: { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } }, _sum: { total: true } }),
+          prisma.invoice.count({ where: { status: { in: ["PENDING", "PARTIAL", "OVERDUE"] } } }),
           prisma.invoice.count({ where: { status: "OVERDUE" } }),
+          prisma.payment.aggregate({ where: { status: "COMPLETED" }, _sum: { amount: true } }),
           prisma.lead.count({ where: { status: "NEW" } }),
           prisma.room.count({ where: { isAvailable: true } }),
           prisma.room.count({ where: { status: "OCCUPIED" } }),
           prisma.followUp.count({ where: { status: "PENDING" } }),
         ]);
 
+        const collectedRevenue = Number(paymentsAgg._sum.amount || 0);
+        const paidInvoiceTotal = Number(paidInvoicesAgg._sum.total || 0);
+        const totalRevenue = Math.max(collectedRevenue, paidInvoiceTotal);
+
         roleStats = {
           totalPatients,
-          totalRevenue: Number(paidInvoicesAgg._sum.total || 0),
+          activePatients: totalPatients,
+          totalRevenue,
+          revenue: totalRevenue,
           pendingPayments: Number(pendingInvoicesAgg._sum.total || 0),
+          pendingInvoices: pendingInvoicesCount,
+          pendingBills: pendingInvoicesCount,
           overdueInvoices,
           newLeads,
           availableRooms,

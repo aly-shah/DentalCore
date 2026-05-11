@@ -1,0 +1,18 @@
+{
+	"appId": "com.dentacore.app",
+	"appName": "DentaCore",
+	"webDir": "public",
+	"server": {
+		"url": "https://dental.scalamatic.com",
+		"cleartext": false,
+		"allowNavigation": [
+			"dental.scalamatic.com",
+			"*.scalamatic.com"
+		]
+	},
+	"android": {
+		"backgroundColor": "#ffffff",
+		"allowMixedContent": false,
+		"webContentsDebuggingEnabled": false
+	}
+}

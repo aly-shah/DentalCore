@@ -75,6 +75,15 @@ export default function PatientsPage() {
     { value: "inactive", label: "Inactive", icon: <X className="w-3.5 h-3.5" /> },
   ];
 
+  const handlePatientClick = (p: Patient) => {
+    // On large screens open the side preview panel; on mobile/tablet go straight to the full profile.
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches) {
+      setSelectedPatient(p);
+    } else {
+      router.push(`/patients/${p.id}`);
+    }
+  };
+
   return (
     <div data-id="PATIENT-LIST" className="space-y-4">
 
@@ -84,7 +93,7 @@ export default function PatientsPage() {
           <h1 className="text-xl sm:text-2xl font-bold text-stone-900">Patients</h1>
           <p className="text-sm text-stone-400 mt-0.5">Manage records, appointments, billing status, and follow-ups in one place</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" iconLeft={<Download className="w-3.5 h-3.5" />} onClick={() => downloadCSV(patients.map(p => ({ Name: p.firstName + " " + p.lastName, Code: p.patientCode, Phone: p.phone, Email: p.email || "", Gender: p.gender, Active: p.isActive ? "Yes" : "No" })), "patients")}>Export</Button>
           <Button variant="outline" size="sm" onClick={() => setShowBookModal(true)} iconLeft={<Calendar className="w-3.5 h-3.5" />}>
             Walk-in
@@ -137,7 +146,7 @@ export default function PatientsPage() {
       </div>
 
       {/* ===== SEARCH + FILTERS + VIEW TOGGLE (STICKY) ===== */}
-      <div className="sticky top-16 z-10 bg-[#FAFAF9] -mx-5 px-5 py-2.5 sm:-mx-8 sm:px-8 lg:-mx-10 lg:px-10 xl:-mx-12 xl:px-12 border-b border-stone-100/80">
+      <div className="sticky top-16 z-10 bg-[#FAFAF9] -mx-4 px-4 py-2.5 sm:-mx-5 sm:px-5 lg:-mx-6 lg:px-6 border-b border-stone-100/80">
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5">
         <div className="flex-1 w-full sm:w-auto">
           <SearchInput
@@ -194,33 +203,33 @@ export default function PatientsPage() {
             /* ---- LIST VIEW ---- */
             <div className="bg-white rounded-xl border border-stone-100 overflow-hidden">
               {patients.map((p, i) => (
-                <button key={p.id} onClick={() => setSelectedPatient(p)}
+                <button key={p.id} onClick={() => handlePatientClick(p)}
                   className={cn(
-                    "w-full flex items-center gap-3 px-4 py-3 text-left transition-all cursor-pointer group",
+                    "w-full flex items-center gap-2.5 sm:gap-3 px-3 sm:px-4 py-3 text-left transition-all cursor-pointer group",
                     i < patients.length - 1 && "border-b border-stone-50",
                     selectedPatient?.id === p.id ? "bg-blue-50/40 border-l-2 border-l-blue-500" : "hover:bg-stone-50",
                   )}>
                   <Avatar name={`${p.firstName} ${p.lastName}`} size="md" className="shrink-0" />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
                       <p className="text-sm font-semibold text-stone-900 truncate">{p.firstName} {p.lastName}</p>
-                      <span className="text-[10px] text-stone-400 font-mono">{p.patientCode}</span>
+                      <span className="text-[10px] text-stone-400 font-mono shrink-0">{p.patientCode}</span>
                     </div>
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-stone-400">
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-xs text-stone-400">
                       <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{p.phone}</span>
                       <span>{p.age}y / {genderShort(p.gender)}</span>
-                      {p.lastVisit && <span className="flex items-center gap-1"><Clock className="w-3 h-3" />Last: {formatDate(p.lastVisit)}</span>}
+                      {p.lastVisit && <span className="hidden sm:flex items-center gap-1"><Clock className="w-3 h-3" />Last: {formatDate(p.lastVisit)}</span>}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                     {p.allergies?.length > 0 && (
-                      <Badge variant="danger" className="text-[10px]"><AlertTriangle className="w-2.5 h-2.5 mr-0.5" />Allergy</Badge>
+                      <Badge variant="danger" className="hidden sm:inline-flex text-[10px]"><AlertTriangle className="w-2.5 h-2.5 mr-0.5" />Allergy</Badge>
                     )}
                     {p.skinType && (
-                      <Badge variant="purple" className="text-[10px]"><Sparkles className="w-2.5 h-2.5 mr-0.5" />{p.skinType?.replace("TYPE_", "")}</Badge>
+                      <Badge variant="purple" className="hidden sm:inline-flex text-[10px]"><Sparkles className="w-2.5 h-2.5 mr-0.5" />{p.skinType?.replace("TYPE_", "")}</Badge>
                     )}
-                    <Badge variant={p.isActive ? "success" : "default"} className="text-[10px]" dot>{p.isActive ? "Active" : "Inactive"}</Badge>
-                    <ChevronRight className="w-4 h-4 text-stone-300 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Badge variant={p.isActive ? "success" : "default"} className="text-[10px] shrink-0" dot>{p.isActive ? "Active" : "Inactive"}</Badge>
+                    <ChevronRight className="w-4 h-4 text-stone-400 shrink-0 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" />
                   </div>
                 </button>
               ))}
@@ -229,7 +238,7 @@ export default function PatientsPage() {
             /* ---- CARD VIEW ---- */
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
               {patients.map((p) => (
-                <button key={p.id} onClick={() => setSelectedPatient(p)}
+                <button key={p.id} onClick={() => handlePatientClick(p)}
                   className={cn(
                     "bg-white rounded-xl border border-stone-100 p-4 text-left transition-all cursor-pointer hover:shadow-md hover:border-blue-200 group",
                     selectedPatient?.id === p.id && "ring-2 ring-blue-400 border-blue-300"

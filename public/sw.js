@@ -1,53 +1,63 @@
-// DentaCore Service Worker — Caching + Offline Support
-const CACHE_NAME = "dentacore-v1";
-const STATIC_ASSETS = ["/", "/dashboard", "/patients", "/calendar", "/consultation"];
+// DentaCore Service Worker — DISABLED.
+//
+// The previous version cached the root page and auth-gated routes, which could
+// leave the app stuck serving a stale/broken cached page (showing up as
+// net::ERR_FAILED in the Android WebView, since the cache persists across
+// restarts). This version takes over, wipes ALL caches, unregisters itself,
+// and reloads any open clients — so existing installs heal themselves and no
+// service worker intercepts requests going forward.
 
-self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
+    (async () => {
+      try {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      } catch {
+        /* ignore */
+      }
+      try {
+        await self.registration.unregister();
+      } catch {
+        /* ignore */
+      }
+      try {
+        const clientList = await self.clients.matchAll({ type: "window" });
+        for (const client of clientList) {
+          client.navigate(client.url);
+        }
+      } catch {
+        /* ignore */
+      }
+    })()
   );
-  self.clients.claim();
 });
 
-self.addEventListener("fetch", (event) => {
-  // Network-first for API, cache-first for static
-  if (event.request.url.includes("/api/")) {
-    event.respondWith(
-      fetch(event.request).catch(() => caches.match(event.request))
-    );
-  } else {
-    event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
-    );
-  }
-});
+// No fetch handler — every request goes straight to the network.
 
-// Push notification handler
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() || { title: "DentaCore", body: "You have a new notification" };
+  const data = (() => {
+    try {
+      return event.data ? event.data.json() : {};
+    } catch {
+      return {};
+    }
+  })();
   event.waitUntil(
-    self.registration.showNotification(data.title, {
-      body: data.body,
+    self.registration.showNotification(data.title || "DentaCore", {
+      body: data.body || "You have a new notification",
       icon: "/favicon.ico",
       badge: "/favicon.ico",
       data: { url: data.url || "/dashboard" },
-      vibrate: [100, 50, 100],
     })
   );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(
-    self.clients.openWindow(event.notification.data?.url || "/dashboard")
-  );
+  event.waitUntil(self.clients.openWindow(event.notification.data?.url || "/dashboard"));
 });

@@ -51,7 +51,7 @@ export function Topbar() {
   }, []);
 
   return (
-    <header className="h-16 bg-white/90 backdrop-blur-md border-b border-stone-100/80 flex items-center justify-between px-4 sm:px-5 lg:px-6 sticky top-0 z-30">
+    <header className="h-16 bg-[#EEF4FD]/85 backdrop-blur-md border-b border-blue-100/70 flex items-center justify-between px-4 sm:px-5 lg:px-6 sticky top-0 z-30">
       {/* Left — Greeting (hidden on mobile to save space) */}
       <div className="hidden sm:flex items-center gap-3">
         <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center shrink-0">
