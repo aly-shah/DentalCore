@@ -16,8 +16,10 @@ export default withSentryConfig(nextConfig, {
   project: process.env.SENTRY_PROJECT,
   silent: !process.env.CI,
   widenClientFileUpload: true,
-  hideSourceMaps: true,
-  disableLogger: true,
-  automaticVercelMonitors: false,
-  reactComponentAnnotation: { enabled: false },
+  sourcemaps: { disable: false, deleteSourcemapsAfterUpload: true },
+  webpack: {
+    treeshake: { removeDebugLogging: true },
+    automaticVercelMonitors: false,
+    reactComponentAnnotation: { enabled: false },
+  },
 });
