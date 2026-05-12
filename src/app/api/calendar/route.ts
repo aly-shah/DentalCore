@@ -100,34 +100,30 @@ export async function GET(request: Request) {
     });
 
     // Fetch doctor schedules
-    const schedules = await prisma.doctorSchedule.findMany({
+    const rawSchedules = await prisma.schedule.findMany({
       where: {
         ...(doctorId && { doctorId }),
         isActive: true,
       },
       select: { doctorId: true, dayOfWeek: true, startTime: true, endTime: true, breakStart: true, breakEnd: true, slotMinutes: true },
     });
+    // Schedule.dayOfWeek is stored as Int (0=Sunday..6=Saturday); normalise to weekday name to match `getDayOfWeek`.
+    const DAYS = ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"];
+    const schedules = rawSchedules.map((s) => ({ ...s, dayOfWeek: DAYS[s.dayOfWeek] ?? String(s.dayOfWeek) }));
 
     // Fetch doctor leaves for the date range
-    const leaves = await prisma.doctorLeave.findMany({
+    const rawLeaves = await prisma.doctorLeave.findMany({
       where: {
         ...(doctorId && { doctorId }),
-        status: "APPROVED",
         startDate: { lte: endDate },
         endDate: { gte: startDate },
       },
-      select: { doctorId: true, startDate: true, endDate: true, type: true, reason: true },
+      select: { doctorId: true, startDate: true, endDate: true, reason: true },
     });
+    const leaves = rawLeaves.map((l) => ({ ...l, type: undefined as string | undefined }));
 
-    // Fetch blocked slots
-    const blockedSlots = await prisma.blockedSlot.findMany({
-      where: {
-        date: { gte: startDate, lte: endDate },
-        ...(doctorId && { doctorId }),
-        ...(roomId && { roomId }),
-      },
-      select: { id: true, doctorId: true, roomId: true, date: true, startTime: true, endTime: true, type: true, reason: true },
-    });
+    // BlockedSlot model isn't in the schema yet — degrade to empty list.
+    const blockedSlots: Array<{ id: string; doctorId: string | null; roomId: string | null; date: Date; startTime: string; endTime: string; type: string; reason: string | null }> = [];
 
     // ---- Compute availability per date per doctor ----
     const calendarData: Record<string, {
@@ -341,21 +337,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "Missing required: date, startTime, endTime, type" }, { status: 400 });
     }
 
-    const blocked = await prisma.blockedSlot.create({
-      data: {
-        doctorId: body.doctorId || null,
-        roomId: body.roomId || null,
-        branchId: body.branchId || null,
-        date: new Date(body.date),
-        startTime: body.startTime,
-        endTime: body.endTime,
-        type: body.type,
-        reason: body.reason || null,
-        createdById: body.createdById || null,
-      },
-    });
-
-    return NextResponse.json({ success: true, data: blocked }, { status: 201 });
+    // BlockedSlot model not in schema — feature disabled until migrated.
+    return NextResponse.json(
+      { success: false, error: "Blocked-slot persistence not implemented (BlockedSlot model missing from schema)" },
+      { status: 501 }
+    );
   } catch (error) {
     logger.api("POST", "/api/calendar", error);
     return NextResponse.json({ success: false, error: "Failed to block slot" }, { status: 500 });
