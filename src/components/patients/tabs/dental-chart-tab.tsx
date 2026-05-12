@@ -1351,6 +1351,10 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
   const [selectedFdi, setSelectedFdi] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [quickMark, setQuickMark] = useState<ToothStatus | null>(null);
+  /** "Copy mode" — the source tooth whose data will be applied to the next
+   *  clicked teeth. Set by the "Apply to other teeth" button in the panel. */
+  const [applyFromFdi, setApplyFromFdi] = useState<number | null>(null);
+  const [appliedCount, setAppliedCount] = useState(0);
 
   const { data: chartRes, isLoading } = useQuery({
     queryKey: ["dental-chart", patientId],
@@ -1408,6 +1412,37 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
       return j.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] }),
+  });
+
+  /** Apply mutation — copies all clinical fields from a source tooth onto
+   *  the target tooth. Used by "Apply to other teeth" copy-mode. */
+  const applyMutation = useMutation({
+    mutationFn: async ({ fromFdi, toFdi }: { fromFdi: number; toFdi: number }) => {
+      if (!chartRes?.chart) return null;
+      const src = teethByFdi[fromFdi];
+      if (!src) throw new Error("source tooth missing");
+      const body = {
+        status: src.status,
+        priority: src.priority,
+        conditions: src.conditions ?? "",
+        plannedTreatment: src.plannedTreatment ?? "",
+        completedTreatment: src.completedTreatment ?? "",
+        surfaces: src.surfaces ?? null,
+        // intentionally NOT copying `notes` — those are tooth-specific
+      };
+      const r = await fetch(`/api/dental-chart/${chartRes.chart.id}/teeth/${toFdi}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to apply");
+      return j.data;
+    },
+    onSuccess: () => {
+      setAppliedCount((n) => n + 1);
+      qc.invalidateQueries({ queryKey: ["dental-chart", patientId] });
+    },
   });
 
   function fdiToDisplay(fdi: number): string {
@@ -1565,6 +1600,31 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
             </div>
           )}
 
+          {/* Apply-to-other-teeth banner */}
+          {applyFromFdi !== null && (
+            <div className="rounded-xl border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-3 py-2 flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-violet-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                #{applyFromFdi}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-bold text-violet-900 leading-tight">
+                  Copying tooth #{applyFromFdi}
+                </p>
+                <p className="text-[10px] text-violet-600 leading-tight">
+                  {appliedCount > 0
+                    ? `Applied to ${appliedCount} other tooth${appliedCount === 1 ? "" : "es"}. Click more to keep going.`
+                    : "Click any tooth to paste status, conditions, surfaces, planned & completed treatments."}
+                </p>
+              </div>
+              <button
+                onClick={() => { setApplyFromFdi(null); setAppliedCount(0); }}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-white text-violet-700 hover:bg-violet-100 border border-violet-200 transition-colors shrink-0"
+              >
+                Done
+              </button>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-stone-200 bg-white p-3 sm:p-4 overflow-x-auto shadow-sm">
             <ArchView
               dentition={dentition}
@@ -1573,8 +1633,20 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
               numbering={numbering}
               quickMark={quickMark}
               onQuickMark={(fdi, status) => quickMarkMutation.mutate({ fdi, status })}
-              onClickTooth={(fdi) => { setInitialSurface(null); setSelectedFdi(fdi); }}
-              onClickSurface={(fdi, s) => { setInitialSurface(s); setSelectedFdi(fdi); }}
+              onClickTooth={(fdi) => {
+                if (applyFromFdi !== null && applyFromFdi !== fdi) {
+                  // Copy-mode: paint source's data onto this tooth.
+                  applyMutation.mutate({ fromFdi: applyFromFdi, toFdi: fdi });
+                  return;
+                }
+                setInitialSurface(null);
+                setSelectedFdi(fdi);
+              }}
+              onClickSurface={(fdi, s) => {
+                if (applyFromFdi !== null) return; // ignore surface clicks in copy-mode
+                setInitialSurface(s);
+                setSelectedFdi(fdi);
+              }}
             />
           </div>
 
@@ -1699,6 +1771,12 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           patientId={patientId}
           onClose={() => { setSelectedFdi(null); setInitialSurface(null); }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] })}
+          onApplyToOthers={(sourceFdi) => {
+            setSelectedFdi(null);
+            setInitialSurface(null);
+            setAppliedCount(0);
+            setApplyFromFdi(sourceFdi);
+          }}
         />
       )}
 
@@ -1819,7 +1897,7 @@ function joinChips(chips: string[]): string {
 }
 
 function ToothPanel({
-  chartId, fdi, existing, initialSurface, patientId, onClose, onSaved,
+  chartId, fdi, existing, initialSurface, patientId, onClose, onSaved, onApplyToOthers,
 }: {
   chartId: string;
   fdi: number;
@@ -1828,6 +1906,7 @@ function ToothPanel({
   patientId?: string;
   onClose: () => void;
   onSaved: () => void;
+  onApplyToOthers?: (sourceFdi: number) => void;
 }) {
   const qc = useQueryClient();
   const cat = toothCategory(fdi);
@@ -2433,33 +2512,53 @@ function ToothPanel({
         </div>
 
         {/* ───── Footer ───── */}
-        <footer className="shrink-0 border-t border-stone-100 p-3 flex items-center justify-between gap-2 bg-stone-50/60">
-          <button
-            onClick={() => reset.mutate()}
-            disabled={reset.isPending || !existing}
-            className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-500 transition-colors flex items-center gap-1.5"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Reset
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="text-[10px] text-stone-400 mr-1 hidden sm:inline">
-              ⌘ Enter to save · Esc to close
-            </span>
+        <footer className="shrink-0 border-t border-stone-100 bg-stone-50/60">
+          {/* "Apply to other teeth" — only enabled when there's saved data to copy */}
+          {existing && onApplyToOthers && (
             <button
-              onClick={handleClose}
-              className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+              onClick={async () => {
+                // Save any pending edits first so the source reflects the current form state.
+                await save.mutateAsync().catch(() => null);
+                onApplyToOthers(fdi);
+                // close handled by save.onSuccess → handleClose; but if save failed we still close + enter copy mode.
+                setMounted(false);
+                setTimeout(onClose, 200);
+              }}
+              className="w-full px-4 py-2 text-[11px] font-bold flex items-center justify-center gap-1.5 text-violet-700 hover:bg-violet-50 border-b border-stone-100 transition-colors"
+              title="Save this tooth and copy its data to others"
             >
-              Cancel
+              <Layers className="w-3.5 h-3.5" />
+              Apply this tooth's data to others →
             </button>
+          )}
+          <div className="p-3 flex items-center justify-between gap-2">
             <button
-              onClick={() => save.mutate()}
-              disabled={save.isPending}
-              className="px-4 py-2 rounded-lg text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shadow-sm"
+              onClick={() => reset.mutate()}
+              disabled={reset.isPending || !existing}
+              className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-500 transition-colors flex items-center gap-1.5"
             >
-              <Save className="w-3.5 h-3.5" />
-              {save.isPending ? "Saving…" : "Save tooth"}
+              <Trash2 className="w-3.5 h-3.5" />
+              Reset
             </button>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-stone-400 mr-1 hidden sm:inline">
+                ⌘ Enter to save · Esc to close
+              </span>
+              <button
+                onClick={handleClose}
+                className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => save.mutate()}
+                disabled={save.isPending}
+                className="px-4 py-2 rounded-lg text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5" />
+                {save.isPending ? "Saving…" : "Save tooth"}
+              </button>
+            </div>
           </div>
         </footer>
       </aside>
