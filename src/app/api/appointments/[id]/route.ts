@@ -69,21 +69,16 @@ export async function PUT(
       );
     }
 
-    // Validate status transitions
+    // Validate status transitions (state machine in src/lib/state/appointment-transitions.ts)
     if (body.status) {
-      const validTransitions: Record<string, string[]> = {
-        SCHEDULED: ["CONFIRMED", "CANCELLED", "RESCHEDULED"],
-        CONFIRMED: ["CHECKED_IN", "CANCELLED", "RESCHEDULED", "NO_SHOW"],
-        CHECKED_IN: ["WAITING", "IN_PROGRESS", "CANCELLED"],
-        WAITING: ["IN_PROGRESS", "CANCELLED"],
-        IN_PROGRESS: ["COMPLETED", "CANCELLED"],
-        COMPLETED: [],
-        CANCELLED: [],
-        NO_SHOW: [],
-        RESCHEDULED: ["SCHEDULED"],
-      };
-      const allowed = validTransitions[existing.status] || [];
-      if (!allowed.includes(body.status)) {
+      const { isAppointmentStatus, isValidTransition } = await import("@/lib/state/appointment-transitions");
+      if (!isAppointmentStatus(body.status) || !isAppointmentStatus(existing.status)) {
+        return NextResponse.json(
+          { success: false, error: `Unknown appointment status: ${body.status}` },
+          { status: 400 }
+        );
+      }
+      if (!isValidTransition(existing.status, body.status)) {
         return NextResponse.json(
           { success: false, error: `Cannot transition from ${existing.status} to ${body.status}` },
           { status: 400 }
