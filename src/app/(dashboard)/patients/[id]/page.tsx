@@ -42,6 +42,7 @@ const FollowUpsTab = lazy(() => import("@/components/patients/tabs/followups-tab
 const AITranscriptsTab = lazy(() => import("@/components/patients/tabs/ai-transcripts-tab").then((m) => ({ default: m.AITranscriptsTab })));
 const DentalChartTab = lazy(() => import("@/components/patients/tabs/dental-chart-tab").then((m) => ({ default: m.DentalChartTab })));
 const BracesTab = lazy(() => import("@/components/patients/tabs/braces-tab").then((m) => ({ default: m.BracesTab })));
+const TreatmentPlansTab = lazy(() => import("@/components/patients/tabs/treatment-plans-tab").then((m) => ({ default: m.TreatmentPlansTab })));
 import { EditPatientModal } from "@/components/patients/edit-patient-modal";
 import { CreateAppointmentModal } from "@/components/appointments/create-appointment-modal";
 
@@ -82,6 +83,7 @@ const TAB_GROUPS = [
     tabs: [
       { value: "overview", label: "Overview" },
       { value: "dental-chart", label: "Dental Chart" },
+      { value: "treatment-plans", label: "Treatment Plans" },
       { value: "braces", label: "Braces" },
       { value: "notes", label: "Notes" },
       { value: "prescriptions", label: "Rx" },
@@ -114,6 +116,7 @@ const TAB_GROUPS = [
 const TAB_COMPONENTS: Record<string, React.FC<{ patientId: string; patient?: Patient; onExit?: () => void }>> = {
   overview: ({ patient }) => patient ? <OverviewTab patient={patient} /> : null,
   "dental-chart": ({ patientId, onExit }) => <DentalChartTab patientId={patientId} onExit={onExit} />,
+  "treatment-plans": ({ patientId }) => <TreatmentPlansTab patientId={patientId} />,
   braces: ({ patientId }) => <BracesTab patientId={patientId} />,
   appointments: ({ patientId }) => <AppointmentsTab patientId={patientId} />,
   notes: ({ patientId }) => <NotesTab patientId={patientId} />,
