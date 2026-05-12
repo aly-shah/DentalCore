@@ -50,3 +50,9 @@ next-env.d.ts
 /android/local.properties
 /android/*.iml
 /android/capacitor-cordova-android-plugins/build/
+
+# Signing credentials — must never be committed
+/android/keystore.properties
+/android/dentacore-release.keystore
+/android/*.keystore
+/android/*.jks

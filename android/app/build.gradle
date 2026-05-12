@@ -16,19 +16,37 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Signing config is loaded from android/keystore.properties (gitignored)
+    // OR from environment variables. See android/keystore.properties.example.
+    // If neither source is present, release builds will still compile but
+    // won't be signed — useful for CI that produces unsigned artifacts.
+    def keystorePropsFile = rootProject.file("keystore.properties")
+    def keystoreProps = new Properties()
+    if (keystorePropsFile.exists()) {
+        keystoreProps.load(new FileInputStream(keystorePropsFile))
+    }
+    def ksStoreFile  = keystoreProps['storeFile']     ?: System.getenv('DENTACORE_KEYSTORE_FILE')     ?: '../dentacore-release.keystore'
+    def ksStorePass  = keystoreProps['storePassword'] ?: System.getenv('DENTACORE_KEYSTORE_PASSWORD')
+    def ksKeyAlias   = keystoreProps['keyAlias']      ?: System.getenv('DENTACORE_KEY_ALIAS')         ?: 'dentacore'
+    def ksKeyPass    = keystoreProps['keyPassword']   ?: System.getenv('DENTACORE_KEY_PASSWORD')
+
     signingConfigs {
-        release {
-            storeFile file("../dentacore-release.keystore")
-            storePassword "dentacore-2026"
-            keyAlias "dentacore"
-            keyPassword "dentacore-2026"
+        if (ksStorePass != null && ksKeyPass != null) {
+            release {
+                storeFile file(ksStoreFile)
+                storePassword ksStorePass
+                keyAlias ksKeyAlias
+                keyPassword ksKeyPass
+            }
         }
     }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
-            signingConfig signingConfigs.release
+            if (signingConfigs.findByName('release') != null) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
