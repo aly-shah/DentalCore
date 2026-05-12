@@ -911,3 +911,87 @@ model Setting {
 
   @@index([tenantId])
 }
+
+// =====================================================================
+// AI governance (enterprise bible §5)
+// =====================================================================
+
+/// Versioned AI model invocation parameters. One row per
+/// (subsystem, modelId, promptVersion) tuple. Active row is used by the
+/// service; historical rows are retained for audit/rollback.
+model AIModelVersion {
+  id            String    @id @default(cuid())
+  name          String // e.g. "treatment-suggestion", "voice-transcription"
+  provider      String // "openai" / "anthropic" / "in-house"
+  modelId       String // "gpt-4o-mini" / "whisper-1" / etc.
+  promptVersion String // "v1" / "v2.1"
+  systemPrompt  String? // verbatim system prompt
+  temperature   Float?
+  maxTokens     Int?
+  isActive      Boolean   @default(true)
+  deprecatedAt  DateTime?
+  createdAt     DateTime  @default(now())
+
+  suggestions AISuggestionLog[]
+
+  @@unique([name, modelId, promptVersion])
+  @@index([name, isActive])
+}
+
+/// Provenance for every AI call. Stores model version, raw inputs/outputs,
+/// confidence, cost, and the downstream acceptance status. Medically
+/// defensible — every clinical artifact derived from AI is traceable.
+model AISuggestionLog {
+  id             String         @id @default(cuid())
+  tenantId       String?
+  patientId      String?
+  doctorId       String?
+  appointmentId  String?
+  modelVersionId String
+  modelVersion   AIModelVersion @relation(fields: [modelVersionId], references: [id])
+
+  subsystem        String // mirror of AIModelVersion.name
+  inputSnapshot    Json // exact inputs (may be PHI-truncated)
+  inputHash        String // SHA-256 of the canonical input
+  rawResponse      Json? // verbatim provider response
+  parsedResponse   Json? // structured form
+  confidence       Float?
+  latencyMs        Int?
+  costCents        Float?
+  promptTokens     Int?
+  completionTokens Int?
+
+  status String @default("PROPOSED")
+  // PROPOSED / ACCEPTED / REJECTED / EXPIRED / ERRORED
+
+  acceptedEntityType String?
+  acceptedEntityId   String?
+  acceptedById       String?
+  acceptedAt         DateTime?
+  rejectionReason    String?
+  errorMessage       String?
+
+  createdAt DateTime @default(now())
+
+  feedback AISuggestionFeedback[]
+
+  @@index([tenantId, subsystem, createdAt])
+  @@index([patientId])
+  @@index([status])
+}
+
+/// Clinician feedback on an AI suggestion. Drives model quality metrics
+/// (flag-as-inaccurate rate per subsystem per model version).
+model AISuggestionFeedback {
+  id               String          @id @default(cuid())
+  suggestionLogId  String
+  suggestion       AISuggestionLog @relation(fields: [suggestionLogId], references: [id], onDelete: Cascade)
+  reviewedById     String?
+  rating           Int // 1-5
+  feedback         String?
+  flagAsInaccurate Boolean         @default(false)
+  flagAsHarmful    Boolean         @default(false)
+  createdAt        DateTime        @default(now())
+
+  @@index([suggestionLogId])
+}
