@@ -617,17 +617,21 @@ interface ArchViewProps {
   numbering: "FDI" | "UNIVERSAL";
   onClickTooth: (fdi: number) => void;
   onClickSurface: (fdi: number, s: Surface) => void;
+  quickMark: ToothStatus | null;
+  onQuickMark: (fdi: number, status: ToothStatus) => void;
 }
 
-function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth, onClickSurface }: ArchViewProps) {
-  // viewBox set up so the arches fill nicely on desktop and mobile.
-  const VB_W = 600;
-  const VB_H = 480;
+function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth, onClickSurface, quickMark, onQuickMark }: ArchViewProps) {
+  const [hoveredFdi, setHoveredFdi] = useState<number | null>(null);
 
-  // Maxillary ellipse (top half visible).
-  const maxCx = 300, maxCy = 200, maxRx = 240, maxRy = 165;
+  // viewBox set up so the arches fill nicely on desktop and mobile.
+  const VB_W = 640;
+  const VB_H = 540;
+
+  // Maxillary ellipse (top half visible). More pronounced curve for the modern look.
+  const maxCx = 320, maxCy = 230, maxRx = 270, maxRy = 200;
   // Mandibular ellipse (bottom half visible).
-  const manCx = 300, manCy = 270, manRx = 240, manRy = 165;
+  const manCx = 320, manCy = 310, manRx = 270, manRy = 200;
 
   const upperFdis = dentition === "PEDIATRIC" ? ARCH_FDI_PRIMARY.upper
                   : dentition === "MIXED" ? ARCH_FDI_ORDER.upper // adult full row; primary inset separately
@@ -674,79 +678,201 @@ function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth,
     return `${start} A ${rx} ${ry} 0 0 ${top ? 1 : 0} ${end}`;
   };
 
+  const hoveredTooth = hoveredFdi !== null ? teethByFdi[hoveredFdi] : null;
+  const hoveredCat = hoveredFdi !== null ? toothCategory(hoveredFdi) : null;
+
   return (
-    <svg
-      viewBox={`0 0 ${VB_W} ${VB_H}`}
-      className="w-full max-w-[640px] mx-auto"
-      style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.04))" }}
-    >
-      <defs>
-        <linearGradient id="arch-bg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#fafafa" />
-          <stop offset="100%" stopColor="#f5f5f4" />
-        </linearGradient>
-      </defs>
+    <div className="relative">
+      <svg
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        className="w-full max-w-[720px] mx-auto select-none"
+      >
+        <defs>
+          {/* Background — subtle radial vignette suggesting depth into mouth */}
+          <radialGradient id="arch-bg" cx="50%" cy="50%" r="65%">
+            <stop offset="0%" stopColor="#fafafa" />
+            <stop offset="70%" stopColor="#f4f4f5" />
+            <stop offset="100%" stopColor="#e7e5e4" />
+          </radialGradient>
 
-      {/* Background plate */}
-      <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-bg)" rx={12} />
+          {/* Pearl-white tooth gradient (used for healthy default) */}
+          <linearGradient id="tooth-pearl" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="50%" stopColor="#fafafa" />
+            <stop offset="100%" stopColor="#e7e5e4" />
+          </linearGradient>
 
-      {/* Arch guides (faint dashed) */}
-      <path d={archGuide(maxCx, maxCy, maxRx, maxRy, false)} fill="none" stroke="#d6d3d1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
-      <path d={archGuide(manCx, manCy, manRx, manRy, true)} fill="none" stroke="#d6d3d1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+          {/* Status gradients */}
+          <linearGradient id="g-CARIES" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fecdd3" /><stop offset="100%" stopColor="#fb7185" />
+          </linearGradient>
+          <linearGradient id="g-FILLING" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fef3c7" /><stop offset="100%" stopColor="#fbbf24" />
+          </linearGradient>
+          <linearGradient id="g-CROWN" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fef08a" /><stop offset="100%" stopColor="#eab308" />
+          </linearGradient>
+          <linearGradient id="g-BRIDGE" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fed7aa" /><stop offset="100%" stopColor="#f97316" />
+          </linearGradient>
+          <linearGradient id="g-IMPLANT" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#dbeafe" /><stop offset="100%" stopColor="#3b82f6" />
+          </linearGradient>
+          <linearGradient id="g-ROOT_CANAL" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#e9d5ff" /><stop offset="100%" stopColor="#a855f7" />
+          </linearGradient>
+          <linearGradient id="g-EXTRACTION_NEEDED" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fecaca" /><stop offset="100%" stopColor="#dc2626" />
+          </linearGradient>
+          <linearGradient id="g-MOBILITY" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fbcfe8" /><stop offset="100%" stopColor="#ec4899" />
+          </linearGradient>
+          <linearGradient id="g-FRACTURE" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ddd6fe" /><stop offset="100%" stopColor="#8b5cf6" />
+          </linearGradient>
+          <linearGradient id="g-UNDER_TREATMENT" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#cffafe" /><stop offset="100%" stopColor="#06b6d4" />
+          </linearGradient>
+          <linearGradient id="g-TREATED" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#d1fae5" /><stop offset="100%" stopColor="#10b981" />
+          </linearGradient>
+          <linearGradient id="g-MISSING" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#e7e5e4" /><stop offset="100%" stopColor="#a8a29e" />
+          </linearGradient>
+          <linearGradient id="g-PROBLEM" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#fecdd3" /><stop offset="100%" stopColor="#f43f5e" />
+          </linearGradient>
 
-      {/* Midline */}
-      <line x1={VB_W / 2} y1={20} x2={VB_W / 2} y2={VB_H - 20} stroke="#d6d3d1" strokeWidth={0.6} strokeDasharray="3 4" opacity={0.5} />
+          {/* Soft drop shadow filter */}
+          <filter id="tooth-shadow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="0.8" />
+            <feOffset dx="0" dy="0.6" result="shadow" />
+            <feComponentTransfer><feFuncA type="linear" slope="0.35" /></feComponentTransfer>
+            <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
 
-      {/* Axis labels */}
-      <text x={VB_W / 2} y={14} fontSize={11} fontWeight={700} textAnchor="middle" fill="#a8a29e" letterSpacing="3">UPPER</text>
-      <text x={VB_W / 2} y={VB_H - 6} fontSize={11} fontWeight={700} textAnchor="middle" fill="#a8a29e" letterSpacing="3">LOWER</text>
-      <text x={18} y={VB_H / 2 + 4} fontSize={11} fontWeight={700} textAnchor="start" fill="#a8a29e" letterSpacing="3">RIGHT</text>
-      <text x={VB_W - 18} y={VB_H / 2 + 4} fontSize={11} fontWeight={700} textAnchor="end" fill="#a8a29e" letterSpacing="3">LEFT</text>
+          {/* Stronger glow for hover/selected */}
+          <filter id="tooth-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" />
+            <feOffset dx="0" dy="0" result="shadow" />
+            <feComponentTransfer><feFuncA type="linear" slope="0.5" /></feComponentTransfer>
+            <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
 
-      {/* Maxillary teeth */}
-      {upperFdis.map((fdi, i) => {
-        const { x, y, rotation } = positionOnArch(i, upperFdis.length, "max");
-        return (
-          <ArchTooth
-            key={fdi}
-            fdi={fdi}
-            x={x}
-            y={y}
-            rotation={rotation}
-            tooth={teethByFdi[fdi]}
-            selected={selectedFdi === fdi}
-            label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
-            arch="upper"
-            onClickTooth={() => onClickTooth(fdi)}
-            onClickSurface={(s) => onClickSurface(fdi, s)}
-          />
-        );
-      })}
+        {/* Background plate */}
+        <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-bg)" rx={20} />
 
-      {/* Mandibular teeth */}
-      {lowerFdis.map((fdi, i) => {
-        const { x, y, rotation } = positionOnArch(i, lowerFdis.length, "man");
-        return (
-          <ArchTooth
-            key={fdi}
-            fdi={fdi}
-            x={x}
-            y={y}
-            rotation={rotation}
-            tooth={teethByFdi[fdi]}
-            selected={selectedFdi === fdi}
-            label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
-            arch="lower"
-            onClickTooth={() => onClickTooth(fdi)}
-            onClickSurface={(s) => onClickSurface(fdi, s)}
-          />
-        );
-      })}
+        {/* Inner mouth vignette (subtle oval suggesting the palate / tongue area) */}
+        <ellipse cx={VB_W / 2} cy={VB_H / 2} rx={150} ry={110} fill="#fafafa" opacity={0.4} />
 
-      {/* Centre arch labels */}
-      <text x={VB_W / 2} y={maxCy + 6} fontSize={9} fontWeight={600} textAnchor="middle" fill="#a8a29e" letterSpacing="1">MAXILLARY</text>
-      <text x={VB_W / 2} y={manCy - 4} fontSize={9} fontWeight={600} textAnchor="middle" fill="#a8a29e" letterSpacing="1">MANDIBULAR</text>
-    </svg>
+        {/* Arch guides (faint dashed) */}
+        <path d={archGuide(maxCx, maxCy, maxRx, maxRy, false)} fill="none" stroke="#cbd5e1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+        <path d={archGuide(manCx, manCy, manRx, manRy, true)} fill="none" stroke="#cbd5e1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+
+        {/* Midline */}
+        <line x1={VB_W / 2} y1={32} x2={VB_W / 2} y2={VB_H - 32} stroke="#cbd5e1" strokeWidth={0.6} strokeDasharray="3 4" opacity={0.4} />
+
+        {/* Axis labels */}
+        <text x={VB_W / 2} y={20} fontSize={10} fontWeight={700} textAnchor="middle" fill="#94a3b8" letterSpacing="3">UPPER</text>
+        <text x={VB_W / 2} y={VB_H - 8} fontSize={10} fontWeight={700} textAnchor="middle" fill="#94a3b8" letterSpacing="3">LOWER</text>
+        <text x={20} y={VB_H / 2 + 4} fontSize={10} fontWeight={700} textAnchor="start" fill="#94a3b8" letterSpacing="3">RIGHT</text>
+        <text x={VB_W - 20} y={VB_H / 2 + 4} fontSize={10} fontWeight={700} textAnchor="end" fill="#94a3b8" letterSpacing="3">LEFT</text>
+
+        {/* Maxillary teeth */}
+        {upperFdis.map((fdi, i) => {
+          const { x, y, rotation } = positionOnArch(i, upperFdis.length, "max");
+          return (
+            <ArchTooth
+              key={fdi}
+              fdi={fdi}
+              x={x}
+              y={y}
+              rotation={rotation}
+              tooth={teethByFdi[fdi]}
+              selected={selectedFdi === fdi}
+              hovered={hoveredFdi === fdi}
+              label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
+              arch="upper"
+              quickMark={quickMark}
+              onHover={(over) => setHoveredFdi(over ? fdi : null)}
+              onClickTooth={() => {
+                if (quickMark) onQuickMark(fdi, quickMark);
+                else onClickTooth(fdi);
+              }}
+              onClickSurface={(s) => onClickSurface(fdi, s)}
+            />
+          );
+        })}
+
+        {/* Mandibular teeth */}
+        {lowerFdis.map((fdi, i) => {
+          const { x, y, rotation } = positionOnArch(i, lowerFdis.length, "man");
+          return (
+            <ArchTooth
+              key={fdi}
+              fdi={fdi}
+              x={x}
+              y={y}
+              rotation={rotation}
+              tooth={teethByFdi[fdi]}
+              selected={selectedFdi === fdi}
+              hovered={hoveredFdi === fdi}
+              label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
+              arch="lower"
+              quickMark={quickMark}
+              onHover={(over) => setHoveredFdi(over ? fdi : null)}
+              onClickTooth={() => {
+                if (quickMark) onQuickMark(fdi, quickMark);
+                else onClickTooth(fdi);
+              }}
+              onClickSurface={(s) => onClickSurface(fdi, s)}
+            />
+          );
+        })}
+
+        {/* Centre arch labels */}
+        <text x={VB_W / 2} y={maxCy + 8} fontSize={10} fontWeight={700} textAnchor="middle" fill="#cbd5e1" letterSpacing="2">MAXILLARY</text>
+        <text x={VB_W / 2} y={manCy - 4} fontSize={10} fontWeight={700} textAnchor="middle" fill="#cbd5e1" letterSpacing="2">MANDIBULAR</text>
+      </svg>
+
+      {/* Floating info card — appears top-right when hovering a tooth */}
+      {hoveredFdi !== null && (
+        <div className="absolute top-3 right-3 sm:top-5 sm:right-5 pointer-events-none">
+          <div className="bg-white/95 backdrop-blur-sm border border-stone-200 rounded-xl shadow-lg px-3 py-2 min-w-[160px] animate-fade-in">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-lg font-bold text-stone-900">
+                {numbering === "FDI" ? `#${hoveredFdi}` : `#${UNIVERSAL_MAP[hoveredFdi] ?? hoveredFdi}`}
+              </span>
+              <span className="text-[9px] uppercase tracking-wider text-stone-400 font-semibold">
+                {hoveredCat}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <span className={cn("w-2 h-2 rounded-full", STATUS_STYLES[(hoveredTooth?.status ?? "HEALTHY") as ToothStatus].dot)} />
+              <span className="text-[11px] font-medium text-stone-600">
+                {STATUS_STYLES[(hoveredTooth?.status ?? "HEALTHY") as ToothStatus].label}
+              </span>
+            </div>
+            {hoveredTooth?.plannedTreatment && (
+              <p className="text-[10px] text-cyan-600 mt-1 leading-tight">
+                Plan: {hoveredTooth.plannedTreatment}
+              </p>
+            )}
+            {hoveredTooth?.completedTreatment && (
+              <p className="text-[10px] text-emerald-600 mt-1 leading-tight">
+                ✓ {hoveredTooth.completedTreatment}
+              </p>
+            )}
+            {hoveredTooth && hoveredTooth.surfaces && Object.values(hoveredTooth.surfaces).filter(Boolean).length > 0 && (
+              <p className="text-[10px] text-stone-400 mt-1">
+                {Object.values(hoveredTooth.surfaces).filter(Boolean).length} surface{Object.values(hoveredTooth.surfaces).filter(Boolean).length === 1 ? "" : "s"} marked
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -757,26 +883,30 @@ interface ArchToothProps {
   rotation: number;
   tooth?: ToothRecord;
   selected: boolean;
+  hovered: boolean;
   label: string;
   arch: "upper" | "lower";
+  quickMark: ToothStatus | null;
+  onHover: (over: boolean) => void;
   onClickTooth: () => void;
   onClickSurface: (s: Surface) => void;
 }
 
 /**
  * Single tooth in the modern U-shaped arch. Rendered at the arch
- * position with category-specific anatomical detail. The 5 surfaces
- * (M/D/O/B/L) are clickable directly on the occlusal face.
+ * position with category-specific anatomical detail, gradient fill,
+ * soft drop shadow, and a hover-lift animation. The 5 surfaces
+ * (M/D/O/B/L) remain clickable directly on the occlusal face.
  */
-function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickTooth, onClickSurface }: ArchToothProps) {
+function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch, quickMark, onHover, onClickTooth, onClickSurface }: ArchToothProps) {
   const cat = toothCategory(fdi);
   const status = (tooth?.status ?? "HEALTHY") as ToothStatus;
   const missing = status === "MISSING";
 
-  // Per-category dimensions for the occlusal face.
-  // Width grows with tooth size; height stays roughly constant in the arch view.
-  const w = cat === "incisor" ? 18 : cat === "canine" ? 20 : cat === "premolar" ? 24 : 30;
-  const h = cat === "incisor" ? 22 : cat === "canine" ? 24 : cat === "premolar" ? 22 : 28;
+  // Per-category dimensions for the occlusal face — slightly larger
+  // for the modern view so the anatomical detail is legible.
+  const w = cat === "incisor" ? 22 : cat === "canine" ? 24 : cat === "premolar" ? 28 : 34;
+  const h = cat === "incisor" ? 28 : cat === "canine" ? 30 : cat === "premolar" ? 28 : 32;
 
   // Mesial / distal: M is always toward the centre of the mouth (midline).
   const quadrant = Math.floor(fdi / 10);
@@ -807,80 +937,95 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickT
   const mesialRect    = mOnRight ? rightRect : leftRect;
   const distalRect    = mOnRight ? leftRect : rightRect;
 
-  // Tooth outline shape based on category.
+  // Whole-tooth gradient fill based on status
+  const gradientId = status !== "HEALTHY" && !missing ? `g-${status}` : "tooth-pearl";
+  const strokeColor =
+    selected ? "#2563eb"
+    : hovered ? "#475569"
+    : "#cbd5e1";
+  const strokeWidth = selected ? 1.6 : hovered ? 1.3 : 1;
+
+  // Tooth outline shape based on category — slightly more anatomical than v1.
   const outline = (() => {
     if (cat === "incisor" || cat === "canine") {
-      const cusp = cat === "canine" ? 4 : 0;
+      const cusp = cat === "canine" ? 5 : 0;
       // Rounded leaf shape (pointier for canines)
       return (
         <path
           d={`M ${w / 2} 0
-              Q ${w} 0 ${w} ${h / 2 + cusp / 2}
-              Q ${w} ${h} ${w / 2} ${h - cusp}
-              L ${w / 2} ${h - cusp}
-              Q 0 ${h} 0 ${h / 2 + cusp / 2}
-              Q 0 0 ${w / 2} 0 Z`}
-          fill="white"
-          stroke="#475569"
-          strokeWidth={1}
+              Q ${w + 1} 1 ${w} ${h * 0.45}
+              Q ${w} ${h - cusp} ${w / 2} ${h - cusp}
+              Q 0 ${h - cusp} 0 ${h * 0.45}
+              Q -1 1 ${w / 2} 0 Z`}
+          fill={`url(#${gradientId})`}
+          stroke={strokeColor}
+          strokeWidth={strokeWidth}
         />
       );
     }
-    // Premolar / molar — rounded square
     return (
       <rect
         x={0}
         y={0}
         width={w}
         height={h}
-        rx={cat === "premolar" ? 5 : 4}
-        fill="white"
-        stroke="#475569"
-        strokeWidth={1}
+        rx={cat === "premolar" ? 6 : 5}
+        fill={`url(#${gradientId})`}
+        stroke={strokeColor}
+        strokeWidth={strokeWidth}
       />
     );
   })();
 
-  const ringR = Math.max(w, h) / 2 + 6;
+  // Hover/select lift — scale slightly up
+  const lift = selected ? 1.12 : hovered ? 1.08 : 1;
+  const filter = selected ? "url(#tooth-glow)" : "url(#tooth-shadow)";
 
   return (
-    <g transform={`translate(${x}, ${y}) rotate(${rotation})`}>
+    <g
+      transform={`translate(${x}, ${y}) rotate(${rotation}) scale(${lift})`}
+      style={{ transition: "transform 0.12s cubic-bezier(0.4, 0, 0.2, 1)" }}
+    >
       <g
         transform={`translate(${-w / 2}, ${-h / 2})`}
+        filter={filter}
+        onMouseEnter={() => onHover(true)}
+        onMouseLeave={() => onHover(false)}
         onClick={(e) => { e.stopPropagation(); onClickTooth(); }}
-        style={{ cursor: "pointer" }}
+        style={{ cursor: quickMark ? "crosshair" : "pointer" }}
       >
-        {/* Tooltip on hover */}
         <title>{`Tooth ${label} (FDI ${fdi}) · ${cat} · ${STATUS_STYLES[status].label}`}</title>
 
-        {/* Selection ring (drawn behind tooth) */}
-        {selected && (
-          <circle cx={w / 2} cy={h / 2} r={ringR} fill="#3b82f6" opacity={0.12} />
-        )}
-
-        {/* Tooth outline */}
+        {/* Tooth outline (gradient-filled, status-tinted) */}
         {outline}
 
         {/* Anatomical hints */}
-        {cat === "premolar" && (
-          <g stroke="#cbd5e1" strokeWidth={0.6} opacity={0.9} pointerEvents="none">
-            <line x1={w / 2} y1={h * 0.3} x2={w / 2} y2={h * 0.7} />
-            <line x1={w * 0.3} y1={h / 2} x2={w * 0.7} y2={h / 2} />
+        {cat === "premolar" && !missing && (
+          <g stroke="#94a3b8" strokeWidth={0.6} opacity={0.55} pointerEvents="none">
+            <line x1={w / 2} y1={h * 0.28} x2={w / 2} y2={h * 0.72} />
+            <line x1={w * 0.28} y1={h / 2} x2={w * 0.72} y2={h / 2} />
+            <circle cx={w / 2} cy={h / 2} r={1.2} fill="#94a3b8" stroke="none" />
           </g>
         )}
-        {cat === "molar" && (
-          <g stroke="#cbd5e1" strokeWidth={0.6} opacity={0.9} pointerEvents="none">
+        {cat === "molar" && !missing && (
+          <g stroke="#94a3b8" strokeWidth={0.55} opacity={0.55} pointerEvents="none">
             <line x1={w / 2} y1={2} x2={w / 2} y2={h - 2} />
             <line x1={2} y1={h / 2} x2={w - 2} y2={h / 2} />
-            {/* Subtle cusp arcs */}
-            <circle cx={w * 0.27} cy={h * 0.3} r={2} fill="none" />
-            <circle cx={w * 0.73} cy={h * 0.3} r={2} fill="none" />
-            <circle cx={w * 0.27} cy={h * 0.7} r={2} fill="none" />
-            <circle cx={w * 0.73} cy={h * 0.7} r={2} fill="none" />
+            {/* Cusp dots */}
+            <circle cx={w * 0.25} cy={h * 0.3} r={1.4} fill="#94a3b8" stroke="none" />
+            <circle cx={w * 0.75} cy={h * 0.3} r={1.4} fill="#94a3b8" stroke="none" />
+            <circle cx={w * 0.25} cy={h * 0.7} r={1.4} fill="#94a3b8" stroke="none" />
+            <circle cx={w * 0.75} cy={h * 0.7} r={1.4} fill="#94a3b8" stroke="none" />
+          </g>
+        )}
+        {(cat === "incisor" || cat === "canine") && !missing && (
+          <g stroke="#94a3b8" strokeWidth={0.55} opacity={0.4} pointerEvents="none">
+            {/* Incisal edge highlight */}
+            <path d={`M ${w * 0.2} ${h * 0.85} Q ${w / 2} ${h - 1} ${w * 0.8} ${h * 0.85}`} fill="none" />
           </g>
         )}
 
-        {/* Surface fills — paint only where there's data or whole-tooth status */}
+        {/* Surface overlays — only render where surface has its own data */}
         {!missing && (
           <g>
             {([
@@ -890,8 +1035,9 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickT
               ["distal", distalRect],
               ["occlusal", centerRect],
             ] as const).map(([s, r]) => {
-              const hasData = !!(tooth?.surfaces?.[s]?.condition || tooth?.surfaces?.[s]?.completedTreatment || tooth?.surfaces?.[s]?.plannedTreatment);
-              if (!hasData && status === "HEALTHY") return null;
+              const data = tooth?.surfaces?.[s];
+              const hasData = !!(data?.condition || data?.completedTreatment || data?.plannedTreatment);
+              if (!hasData) return null;
               const { fill, stroke } = fillFor(s as Surface);
               return (
                 <rect
@@ -900,11 +1046,11 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickT
                   y={r.y + 1}
                   width={r.w - 2}
                   height={r.h - 2}
-                  rx={1.2}
+                  rx={1.4}
                   fill={fill}
                   stroke={stroke}
-                  strokeWidth={0.5}
-                  opacity={0.9}
+                  strokeWidth={0.6}
+                  opacity={0.85}
                   pointerEvents="none"
                 />
               );
@@ -912,8 +1058,8 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickT
           </g>
         )}
 
-        {/* Clickable surface zones (invisible) */}
-        {!missing && ([
+        {/* Clickable surface zones (invisible) — disabled when quickMark active (whole-tooth click takes priority) */}
+        {!missing && !quickMark && ([
           ["buccal", buccalRect],
           ["lingual", lingualRect],
           ["mesial", mesialRect],
@@ -936,36 +1082,49 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickT
 
         {/* Missing X */}
         {missing && (
-          <g stroke="#78716c" strokeWidth={1.4} strokeLinecap="round" opacity={0.6}>
-            <line x1={3} y1={3} x2={w - 3} y2={h - 3} />
-            <line x1={w - 3} y1={3} x2={3} y2={h - 3} />
+          <g stroke="#78716c" strokeWidth={1.8} strokeLinecap="round" opacity={0.7}>
+            <line x1={4} y1={4} x2={w - 4} y2={h - 4} />
+            <line x1={w - 4} y1={4} x2={4} y2={h - 4} />
           </g>
         )}
 
-        {/* Selection highlight */}
-        {selected && (
-          <rect
-            x={-2}
-            y={-2}
-            width={w + 4}
-            height={h + 4}
-            rx={5}
-            fill="none"
-            stroke="#3b82f6"
-            strokeWidth={1.2}
+        {/* Priority badge — small dot top-right for non-MEDIUM priorities */}
+        {tooth?.priority && tooth.priority !== "MEDIUM" && !missing && (
+          <circle
+            cx={w - 2}
+            cy={2}
+            r={2.5}
+            fill={
+              tooth.priority === "EMERGENCY" ? "#dc2626"
+              : tooth.priority === "HIGH" ? "#f59e0b"
+              : "#a78bfa"
+            }
+            stroke="white"
+            strokeWidth={0.8}
+            pointerEvents="none"
           />
         )}
       </g>
 
-      {/* FDI label — counter-rotate so the number stays upright */}
+      {/* FDI label — counter-rotate so the number stays upright. Pill background for legibility */}
       <g transform={`rotate(${-rotation})`} pointerEvents="none">
+        <rect
+          x={-9}
+          y={arch === "upper" ? -h / 2 - 14 : h / 2 + 4}
+          width={18}
+          height={11}
+          rx={5.5}
+          fill={selected ? "#2563eb" : "white"}
+          stroke={selected ? "#1d4ed8" : "#e2e8f0"}
+          strokeWidth={0.6}
+        />
         <text
           x={0}
-          y={arch === "upper" ? -h / 2 - 7 : h / 2 + 14}
+          y={arch === "upper" ? -h / 2 - 6 : h / 2 + 12}
           textAnchor="middle"
-          fontSize={9}
+          fontSize={8}
           fontWeight={700}
-          fill="#475569"
+          fill={selected ? "white" : "#475569"}
         >
           {label}
         </text>
@@ -991,6 +1150,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
   const [viewMode, setViewMode] = useState<"ARCH" | "CLASSIC">("ARCH");
   const [selectedFdi, setSelectedFdi] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [quickMark, setQuickMark] = useState<ToothStatus | null>(null);
 
   const { data: chartRes, isLoading } = useQuery({
     queryKey: ["dental-chart", patientId],
@@ -1028,6 +1188,23 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
       });
       const j = await r.json();
       if (!j.success) throw new Error(j.error || "Failed to create chart");
+      return j.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] }),
+  });
+
+  /** Quick-mark mutation — paints a status to the whole tooth without
+   *  opening the panel. Used when the toolbar status is "loaded". */
+  const quickMarkMutation = useMutation({
+    mutationFn: async ({ fdi, status }: { fdi: number; status: ToothStatus }) => {
+      if (!chartRes?.chart) return null;
+      const r = await fetch(`/api/dental-chart/${chartRes.chart.id}/teeth/${fdi}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to mark tooth");
       return j.data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] }),
@@ -1133,28 +1310,67 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
       {!isLoading && chartRes?.chart && viewMode === "ARCH" && (
         <>
-          <div className="rounded-2xl border border-stone-200 bg-white p-3 sm:p-4 overflow-x-auto">
+          {/* Quick-mark toolbar */}
+          <div className="rounded-xl border border-stone-200 bg-white p-2 flex items-center gap-2 overflow-x-auto">
+            <span className="text-[10px] uppercase tracking-wider text-stone-400 font-semibold shrink-0 px-1">
+              Quick mark
+            </span>
+            <div className="flex gap-1 flex-wrap">
+              {STATUSES.filter((s) => s !== "HEALTHY" && s !== "PROBLEM" && s !== "UNDER_TREATMENT" && s !== "TREATED").map((s) => (
+                <button
+                  key={s}
+                  onClick={() => setQuickMark(quickMark === s ? null : s)}
+                  className={cn(
+                    "px-2 py-1 rounded-md text-[10px] font-semibold border-2 transition-all flex items-center gap-1.5",
+                    quickMark === s
+                      ? `${STATUS_STYLES[s].border} ${STATUS_STYLES[s].bg} ${STATUS_STYLES[s].text} scale-105 shadow-sm`
+                      : "border-transparent text-stone-500 hover:border-stone-200 hover:bg-stone-50"
+                  )}
+                >
+                  <span className={cn("w-1.5 h-1.5 rounded-full", STATUS_STYLES[s].dot)} />
+                  {STATUS_STYLES[s].label}
+                </button>
+              ))}
+            </div>
+            {quickMark && (
+              <button
+                onClick={() => setQuickMark(null)}
+                className="ml-auto text-[10px] text-stone-400 hover:text-stone-700 px-2 py-1 shrink-0"
+                title="Clear quick mark"
+              >
+                Clear ✕
+              </button>
+            )}
+          </div>
+          {quickMark && (
+            <div className="text-[10px] text-stone-500 -mt-2 px-1">
+              <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse mr-1.5" />
+              Click any tooth to mark it as <strong>{STATUS_STYLES[quickMark].label}</strong> · surface clicks disabled while marking
+            </div>
+          )}
+
+          <div className="rounded-2xl border border-stone-200 bg-white p-3 sm:p-4 overflow-x-auto shadow-sm">
             <ArchView
               dentition={dentition}
               teethByFdi={teethByFdi}
               selectedFdi={selectedFdi}
               numbering={numbering}
+              quickMark={quickMark}
+              onQuickMark={(fdi, status) => quickMarkMutation.mutate({ fdi, status })}
               onClickTooth={(fdi) => { setInitialSurface(null); setSelectedFdi(fdi); }}
               onClickSurface={(fdi, s) => { setInitialSurface(s); setSelectedFdi(fdi); }}
             />
           </div>
 
-          <details className="text-[10px] text-stone-500">
-            <summary className="cursor-pointer select-none">Status legend</summary>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
-              {STATUSES.map((s) => (
-                <div key={s} className="flex items-center gap-1.5">
-                  <span className={cn("w-3 h-3 rounded-full", STATUS_STYLES[s].dot)} />
-                  <span>{STATUS_STYLES[s].label}</span>
-                </div>
-              ))}
-            </div>
-          </details>
+          {/* Compact inline legend */}
+          <div className="flex flex-wrap gap-2 text-[10px] text-stone-600 px-1">
+            {STATUSES.filter((s) => s !== "HEALTHY" && s !== "PROBLEM" && s !== "UNDER_TREATMENT" && s !== "TREATED").map((s) => (
+              <div key={s} className="flex items-center gap-1">
+                <span className={cn("w-2.5 h-2.5 rounded-full", STATUS_STYLES[s].dot)} />
+                <span>{STATUS_STYLES[s].label}</span>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
