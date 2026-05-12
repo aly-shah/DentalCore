@@ -315,25 +315,25 @@ function ToothSVG({ fdi, arch, status, surfaces, selected, label, onClickTooth, 
         missing && "opacity-40"
       )}
     >
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={VB_W * 1.4} height={VB_H * 1.4} className="overflow-visible">
+      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={VB_W * 1.6} height={VB_H * 1.6} className="overflow-visible">
         {/* ────── Side view (anatomical) ────── */}
         <g transform={`translate(${(VB_W - sideW) / 2}, ${sideTop})`}>
-          <path
-            d={sideCrownPath}
-            fill="white"
-            stroke="#16a34a"
-            strokeWidth={0.9}
-            strokeLinejoin="round"
-          />
-          {/* Buccal status indicator on side view: paint a subtle fill if status is non-healthy */}
+          {/* Status-tinted fill behind the outline so the whole tooth
+              colors when status is non-healthy */}
           {!missing && status !== "HEALTHY" && (
             <path
               d={sideCrownPath}
               fill={surfaceFill(status, undefined).fill}
-              opacity={0.4}
-              pointerEvents="none"
+              opacity={0.7}
             />
           )}
+          <path
+            d={sideCrownPath}
+            fill={status === "HEALTHY" || missing ? "white" : "none"}
+            stroke="#475569"
+            strokeWidth={1.1}
+            strokeLinejoin="round"
+          />
         </g>
 
         {/* ────── Occlusal view (chewing surface) ────── */}
@@ -509,9 +509,10 @@ function OcclusalView({ cat, w, h, status, surfaces, mOnRight, arch, onClickSurf
           cy={h / 2}
           rx={w / 2 - 1}
           ry={h / 2 - 1}
-          fill="white"
-          stroke="#16a34a"
-          strokeWidth={0.9}
+          fill={status === "HEALTHY" ? "white" : surfaceFill(status, undefined).fill}
+          fillOpacity={status === "HEALTHY" ? 1 : 0.6}
+          stroke="#475569"
+          strokeWidth={1.1}
         />
       );
     }
@@ -523,9 +524,10 @@ function OcclusalView({ cat, w, h, status, surfaces, mOnRight, arch, onClickSurf
         width={w - 2}
         height={h - 2}
         rx={cat === "premolar" ? 4 : 2}
-        fill="white"
-        stroke="#16a34a"
-        strokeWidth={0.9}
+        fill={status === "HEALTHY" ? "white" : surfaceFill(status, undefined).fill}
+        fillOpacity={status === "HEALTHY" ? 1 : 0.6}
+        stroke="#475569"
+        strokeWidth={1.1}
       />
     );
   })();
@@ -1417,7 +1419,10 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
   function Tooth({ fdi, arch }: { fdi: number; arch: "upper" | "lower" }) {
     const t = teethByFdi[fdi];
-    const status = (t?.status ?? "HEALTHY") as ToothStatus;
+    // Use derived effective status so Classic view tints teeth with
+    // conditions / surfaces / planned-completed treatments, even when
+    // the explicit status field is still HEALTHY.
+    const status = effectiveStatus(t);
     return (
       <ToothSVG
         fdi={fdi}
