@@ -688,96 +688,111 @@ function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth,
         className="w-full max-w-[720px] mx-auto select-none"
       >
         <defs>
-          {/* Background — subtle radial vignette suggesting depth into mouth */}
-          <radialGradient id="arch-bg" cx="50%" cy="50%" r="65%">
-            <stop offset="0%" stopColor="#fafafa" />
-            <stop offset="70%" stopColor="#f4f4f5" />
-            <stop offset="100%" stopColor="#e7e5e4" />
+          {/* Background — refined cream/pearl gradient suggesting oral cavity */}
+          <radialGradient id="arch-bg" cx="50%" cy="50%" r="70%">
+            <stop offset="0%" stopColor="#fefdfb" />
+            <stop offset="50%" stopColor="#faf8f5" />
+            <stop offset="100%" stopColor="#f0ece5" />
           </radialGradient>
 
-          {/* Pearl-white tooth gradient (used for healthy default) */}
+          {/* Subtle dot pattern for chic background texture */}
+          <pattern id="arch-pattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+            <circle cx="10" cy="10" r="0.5" fill="#d6d3d1" opacity="0.4" />
+          </pattern>
+
+          {/* Pearl enamel — multi-stop for translucent depth */}
           <linearGradient id="tooth-pearl" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="50%" stopColor="#fafafa" />
-            <stop offset="100%" stopColor="#e7e5e4" />
+            <stop offset="25%" stopColor="#fdfcfa" />
+            <stop offset="65%" stopColor="#f5f1ea" />
+            <stop offset="100%" stopColor="#e8e2d6" />
           </linearGradient>
 
-          {/* Status gradients */}
+          {/* Sophisticated status palette — softer, more refined than primary colors */}
           <linearGradient id="g-CARIES" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fecdd3" /><stop offset="100%" stopColor="#fb7185" />
+            <stop offset="0%" stopColor="#fee2e8" /><stop offset="100%" stopColor="#f87489" />
           </linearGradient>
           <linearGradient id="g-FILLING" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fef3c7" /><stop offset="100%" stopColor="#fbbf24" />
+            <stop offset="0%" stopColor="#fef0d4" /><stop offset="100%" stopColor="#d4a449" />
           </linearGradient>
           <linearGradient id="g-CROWN" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fef08a" /><stop offset="100%" stopColor="#eab308" />
+            <stop offset="0%" stopColor="#fdf2c4" /><stop offset="100%" stopColor="#c79a30" />
           </linearGradient>
           <linearGradient id="g-BRIDGE" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fed7aa" /><stop offset="100%" stopColor="#f97316" />
+            <stop offset="0%" stopColor="#fde8d4" /><stop offset="100%" stopColor="#d97742" />
           </linearGradient>
           <linearGradient id="g-IMPLANT" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#dbeafe" /><stop offset="100%" stopColor="#3b82f6" />
+            <stop offset="0%" stopColor="#dfe8f3" /><stop offset="100%" stopColor="#4c6b8a" />
           </linearGradient>
           <linearGradient id="g-ROOT_CANAL" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#e9d5ff" /><stop offset="100%" stopColor="#a855f7" />
+            <stop offset="0%" stopColor="#ebdcf5" /><stop offset="100%" stopColor="#8b5cf6" />
           </linearGradient>
           <linearGradient id="g-EXTRACTION_NEEDED" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fecaca" /><stop offset="100%" stopColor="#dc2626" />
+            <stop offset="0%" stopColor="#fecaca" /><stop offset="100%" stopColor="#b91c1c" />
           </linearGradient>
           <linearGradient id="g-MOBILITY" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fbcfe8" /><stop offset="100%" stopColor="#ec4899" />
+            <stop offset="0%" stopColor="#fce4ec" /><stop offset="100%" stopColor="#c2185b" />
           </linearGradient>
           <linearGradient id="g-FRACTURE" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#ddd6fe" /><stop offset="100%" stopColor="#8b5cf6" />
+            <stop offset="0%" stopColor="#e0dcf5" /><stop offset="100%" stopColor="#6d4ca0" />
           </linearGradient>
           <linearGradient id="g-UNDER_TREATMENT" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#cffafe" /><stop offset="100%" stopColor="#06b6d4" />
+            <stop offset="0%" stopColor="#dff7fa" /><stop offset="100%" stopColor="#0e95b3" />
           </linearGradient>
           <linearGradient id="g-TREATED" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#d1fae5" /><stop offset="100%" stopColor="#10b981" />
+            <stop offset="0%" stopColor="#dcf4e3" /><stop offset="100%" stopColor="#5b9b6d" />
           </linearGradient>
           <linearGradient id="g-MISSING" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#e7e5e4" /><stop offset="100%" stopColor="#a8a29e" />
           </linearGradient>
           <linearGradient id="g-PROBLEM" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#fecdd3" /><stop offset="100%" stopColor="#f43f5e" />
+            <stop offset="0%" stopColor="#fee2e8" /><stop offset="100%" stopColor="#f87489" />
           </linearGradient>
 
-          {/* Soft drop shadow filter */}
+          {/* Enamel shine — diagonal highlight gradient */}
+          <linearGradient id="enamel-shine" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="white" stopOpacity="0.6" />
+            <stop offset="40%" stopColor="white" stopOpacity="0" />
+            <stop offset="100%" stopColor="white" stopOpacity="0" />
+          </linearGradient>
+
+          {/* Refined drop shadow for chic depth */}
           <filter id="tooth-shadow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="0.8" />
-            <feOffset dx="0" dy="0.6" result="shadow" />
-            <feComponentTransfer><feFuncA type="linear" slope="0.35" /></feComponentTransfer>
+            <feGaussianBlur in="SourceAlpha" stdDeviation="0.6" />
+            <feOffset dx="0" dy="0.8" result="shadow" />
+            <feComponentTransfer><feFuncA type="linear" slope="0.25" /></feComponentTransfer>
             <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
 
-          {/* Stronger glow for hover/selected */}
+          {/* Glow for hover/selected — sophisticated blue ring */}
           <filter id="tooth-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" />
+            <feGaussianBlur in="SourceAlpha" stdDeviation="2" />
             <feOffset dx="0" dy="0" result="shadow" />
-            <feComponentTransfer><feFuncA type="linear" slope="0.5" /></feComponentTransfer>
+            <feComponentTransfer><feFuncA type="linear" slope="0.4" /></feComponentTransfer>
             <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
         </defs>
 
-        {/* Background plate */}
-        <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-bg)" rx={20} />
+        {/* Background plate with pattern overlay */}
+        <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-bg)" rx={24} />
+        <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-pattern)" rx={24} opacity={0.7} />
 
-        {/* Inner mouth vignette (subtle oval suggesting the palate / tongue area) */}
-        <ellipse cx={VB_W / 2} cy={VB_H / 2} rx={150} ry={110} fill="#fafafa" opacity={0.4} />
+        {/* Refined inner vignette — softer, suggests palate depth */}
+        <ellipse cx={VB_W / 2} cy={VB_H / 2} rx={170} ry={130} fill="#fefdfb" opacity={0.5} />
+        <ellipse cx={VB_W / 2} cy={VB_H / 2} rx={90} ry={60} fill="#faf5ed" opacity={0.4} />
 
-        {/* Arch guides (faint dashed) */}
-        <path d={archGuide(maxCx, maxCy, maxRx, maxRy, false)} fill="none" stroke="#cbd5e1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
-        <path d={archGuide(manCx, manCy, manRx, manRy, true)} fill="none" stroke="#cbd5e1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+        {/* Arch guides — single elegant continuous curve, more refined */}
+        <path d={archGuide(maxCx, maxCy, maxRx, maxRy, false)} fill="none" stroke="#a8a29e" strokeWidth={0.8} strokeDasharray="3 5" opacity={0.4} />
+        <path d={archGuide(manCx, manCy, manRx, manRy, true)} fill="none" stroke="#a8a29e" strokeWidth={0.8} strokeDasharray="3 5" opacity={0.4} />
 
-        {/* Midline */}
-        <line x1={VB_W / 2} y1={32} x2={VB_W / 2} y2={VB_H - 32} stroke="#cbd5e1" strokeWidth={0.6} strokeDasharray="3 4" opacity={0.4} />
+        {/* Midline — refined */}
+        <line x1={VB_W / 2} y1={36} x2={VB_W / 2} y2={VB_H - 36} stroke="#a8a29e" strokeWidth={0.5} strokeDasharray="4 6" opacity={0.35} />
 
-        {/* Axis labels */}
-        <text x={VB_W / 2} y={20} fontSize={10} fontWeight={700} textAnchor="middle" fill="#94a3b8" letterSpacing="3">UPPER</text>
-        <text x={VB_W / 2} y={VB_H - 8} fontSize={10} fontWeight={700} textAnchor="middle" fill="#94a3b8" letterSpacing="3">LOWER</text>
-        <text x={20} y={VB_H / 2 + 4} fontSize={10} fontWeight={700} textAnchor="start" fill="#94a3b8" letterSpacing="3">RIGHT</text>
-        <text x={VB_W - 20} y={VB_H / 2 + 4} fontSize={10} fontWeight={700} textAnchor="end" fill="#94a3b8" letterSpacing="3">LEFT</text>
+        {/* Axis labels — sophisticated typography */}
+        <text x={VB_W / 2} y={22} fontSize={9} fontWeight={600} textAnchor="middle" fill="#78716c" letterSpacing="6">UPPER</text>
+        <text x={VB_W / 2} y={VB_H - 10} fontSize={9} fontWeight={600} textAnchor="middle" fill="#78716c" letterSpacing="6">LOWER</text>
+        <text x={22} y={VB_H / 2 + 4} fontSize={9} fontWeight={600} textAnchor="start" fill="#78716c" letterSpacing="4">RIGHT</text>
+        <text x={VB_W - 22} y={VB_H / 2 + 4} fontSize={9} fontWeight={600} textAnchor="end" fill="#78716c" letterSpacing="4">LEFT</text>
 
         {/* Maxillary teeth */}
         {upperFdis.map((fdi, i) => {
@@ -837,41 +852,94 @@ function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth,
       </svg>
 
       {/* Floating info card — appears top-right when hovering a tooth */}
-      {hoveredFdi !== null && (
-        <div className="absolute top-3 right-3 sm:top-5 sm:right-5 pointer-events-none">
-          <div className="bg-white/95 backdrop-blur-sm border border-stone-200 rounded-xl shadow-lg px-3 py-2 min-w-[160px] animate-fade-in">
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-lg font-bold text-stone-900">
-                {numbering === "FDI" ? `#${hoveredFdi}` : `#${UNIVERSAL_MAP[hoveredFdi] ?? hoveredFdi}`}
-              </span>
-              <span className="text-[9px] uppercase tracking-wider text-stone-400 font-semibold">
-                {hoveredCat}
-              </span>
+      {hoveredFdi !== null && (() => {
+        const hStatus = (hoveredTooth?.status ?? "HEALTHY") as ToothStatus;
+        const hSurfaces = hoveredTooth?.surfaces
+          ? (Object.entries(hoveredTooth.surfaces) as [Surface, SurfaceData | undefined][])
+              .filter(([, d]) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment))
+          : [];
+        return (
+          <div className="absolute top-3 right-3 sm:top-5 sm:right-5 pointer-events-none">
+            <div className="bg-white/96 backdrop-blur-md border border-stone-200/80 rounded-2xl shadow-xl px-4 py-3 min-w-[200px] max-w-[280px] animate-fade-in">
+              {/* Header */}
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="text-xl font-bold text-stone-900 tracking-tight">
+                  {numbering === "FDI" ? `#${hoveredFdi}` : `#${UNIVERSAL_MAP[hoveredFdi] ?? hoveredFdi}`}
+                </span>
+                <span className="text-[9px] uppercase tracking-widest text-stone-400 font-bold">
+                  {hoveredCat}
+                </span>
+              </div>
+
+              {/* Whole-tooth status */}
+              <div className="flex items-center gap-1.5 mt-1.5 pb-1.5 border-b border-stone-100">
+                <span className={cn("w-2 h-2 rounded-full", STATUS_STYLES[hStatus].dot)} />
+                <span className="text-[11px] font-semibold text-stone-700">
+                  {STATUS_STYLES[hStatus].label}
+                </span>
+                {hoveredTooth?.priority && hoveredTooth.priority !== "MEDIUM" && (
+                  <span className={cn(
+                    "ml-auto text-[9px] uppercase font-bold px-1.5 py-0.5 rounded",
+                    hoveredTooth.priority === "EMERGENCY" ? "text-red-600 bg-red-50"
+                    : hoveredTooth.priority === "HIGH" ? "text-amber-600 bg-amber-50"
+                    : "text-violet-600 bg-violet-50"
+                  )}>
+                    {hoveredTooth.priority}
+                  </span>
+                )}
+              </div>
+
+              {/* Surface issues — one row per affected surface */}
+              {hSurfaces.length > 0 && (
+                <div className="mt-2 space-y-1">
+                  {hSurfaces.map(([s, d]) => (
+                    <div key={s} className="flex items-start gap-2 text-[10px]">
+                      <span className="w-4 h-4 shrink-0 rounded-md bg-stone-100 text-stone-700 font-bold flex items-center justify-center text-[9px]">
+                        {s.charAt(0).toUpperCase()}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        {d?.condition && <p className="text-rose-600 font-medium truncate">{d.condition}</p>}
+                        {d?.plannedTreatment && <p className="text-cyan-600 truncate">→ {d.plannedTreatment}</p>}
+                        {d?.completedTreatment && <p className="text-emerald-600 truncate">✓ {d.completedTreatment}</p>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Whole-tooth planned/completed */}
+              {(hoveredTooth?.plannedTreatment || hoveredTooth?.completedTreatment) && (
+                <div className="mt-2 pt-1.5 border-t border-stone-100 space-y-0.5">
+                  {hoveredTooth.plannedTreatment && (
+                    <p className="text-[10px] text-cyan-600 flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-cyan-500" />
+                      Plan: <span className="font-medium">{hoveredTooth.plannedTreatment}</span>
+                    </p>
+                  )}
+                  {hoveredTooth.completedTreatment && (
+                    <p className="text-[10px] text-emerald-600 flex items-center gap-1">
+                      <span className="w-1 h-1 rounded-full bg-emerald-500" />
+                      Done: <span className="font-medium">{hoveredTooth.completedTreatment}</span>
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Notes preview */}
+              {hoveredTooth?.notes && (
+                <p className="text-[10px] text-stone-500 mt-2 italic leading-tight border-t border-stone-100 pt-1.5 line-clamp-2">
+                  {hoveredTooth.notes}
+                </p>
+              )}
+
+              {/* Click hint */}
+              <p className="text-[9px] text-stone-300 mt-2 uppercase tracking-wider font-semibold">
+                Click to edit · drag to mark surfaces
+              </p>
             </div>
-            <div className="flex items-center gap-1.5 mt-1">
-              <span className={cn("w-2 h-2 rounded-full", STATUS_STYLES[(hoveredTooth?.status ?? "HEALTHY") as ToothStatus].dot)} />
-              <span className="text-[11px] font-medium text-stone-600">
-                {STATUS_STYLES[(hoveredTooth?.status ?? "HEALTHY") as ToothStatus].label}
-              </span>
-            </div>
-            {hoveredTooth?.plannedTreatment && (
-              <p className="text-[10px] text-cyan-600 mt-1 leading-tight">
-                Plan: {hoveredTooth.plannedTreatment}
-              </p>
-            )}
-            {hoveredTooth?.completedTreatment && (
-              <p className="text-[10px] text-emerald-600 mt-1 leading-tight">
-                ✓ {hoveredTooth.completedTreatment}
-              </p>
-            )}
-            {hoveredTooth && hoveredTooth.surfaces && Object.values(hoveredTooth.surfaces).filter(Boolean).length > 0 && (
-              <p className="text-[10px] text-stone-400 mt-1">
-                {Object.values(hoveredTooth.surfaces).filter(Boolean).length} surface{Object.values(hoveredTooth.surfaces).filter(Boolean).length === 1 ? "" : "s"} marked
-              </p>
-            )}
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
@@ -941,9 +1009,27 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch,
   const gradientId = status !== "HEALTHY" && !missing ? `g-${status}` : "tooth-pearl";
   const strokeColor =
     selected ? "#2563eb"
-    : hovered ? "#475569"
-    : "#cbd5e1";
-  const strokeWidth = selected ? 1.6 : hovered ? 1.3 : 1;
+    : hovered ? "#57534e"
+    : "#a8a29e";
+  const strokeWidth = selected ? 1.6 : hovered ? 1.2 : 0.9;
+
+  // Count distinct issues on this tooth — used for the issue-count badge.
+  // An "issue" is: non-healthy status, OR any surface with data, OR a
+  // planned/completed treatment recorded.
+  const surfaceIssues = tooth?.surfaces
+    ? (Object.entries(tooth.surfaces) as [Surface, SurfaceData | undefined][])
+        .filter(([, d]) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment))
+    : [];
+  const issueCount =
+    (status !== "HEALTHY" && !missing ? 1 : 0) +
+    surfaceIssues.length +
+    (tooth?.plannedTreatment ? 1 : 0) +
+    (tooth?.completedTreatment ? 1 : 0);
+  const surfaceIssueColors = surfaceIssues.slice(0, 4).map(([, d]) => {
+    if (d?.completedTreatment) return "#5b9b6d"; // emerald
+    if (d?.plannedTreatment)   return "#0e95b3"; // cyan
+    return "#f87489";                            // rose (caries / condition)
+  });
 
   // Tooth outline shape based on category — slightly more anatomical than v1.
   const outline = (() => {
@@ -999,29 +1085,61 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch,
         {/* Tooth outline (gradient-filled, status-tinted) */}
         {outline}
 
-        {/* Anatomical hints */}
+        {/* Enamel shine — diagonal translucent highlight in the top-left
+            corner of every tooth. Creates a subtle 3D / glossy effect. */}
+        {!missing && (
+          <g pointerEvents="none" opacity={0.75}>
+            {cat === "incisor" || cat === "canine" ? (
+              <path
+                d={`M ${w * 0.18} ${h * 0.15} Q ${w * 0.45} ${h * 0.05} ${w * 0.55} ${h * 0.35} Q ${w * 0.35} ${h * 0.45} ${w * 0.18} ${h * 0.15} Z`}
+                fill="url(#enamel-shine)"
+              />
+            ) : (
+              <path
+                d={`M ${w * 0.12} ${h * 0.12} Q ${w * 0.42} ${h * 0.05} ${w * 0.52} ${h * 0.3} Q ${w * 0.3} ${h * 0.4} ${w * 0.12} ${h * 0.12} Z`}
+                fill="url(#enamel-shine)"
+              />
+            )}
+          </g>
+        )}
+
+        {/* Anatomical hints — refined for chic feel */}
         {cat === "premolar" && !missing && (
-          <g stroke="#94a3b8" strokeWidth={0.6} opacity={0.55} pointerEvents="none">
-            <line x1={w / 2} y1={h * 0.28} x2={w / 2} y2={h * 0.72} />
-            <line x1={w * 0.28} y1={h / 2} x2={w * 0.72} y2={h / 2} />
-            <circle cx={w / 2} cy={h / 2} r={1.2} fill="#94a3b8" stroke="none" />
+          <g stroke="#a8a29e" strokeWidth={0.5} opacity={0.45} pointerEvents="none">
+            <line x1={w / 2} y1={h * 0.3} x2={w / 2} y2={h * 0.7} />
+            <line x1={w * 0.3} y1={h / 2} x2={w * 0.7} y2={h / 2} />
+            <circle cx={w / 2} cy={h / 2} r={1} fill="#a8a29e" stroke="none" opacity={0.5} />
           </g>
         )}
         {cat === "molar" && !missing && (
-          <g stroke="#94a3b8" strokeWidth={0.55} opacity={0.55} pointerEvents="none">
-            <line x1={w / 2} y1={2} x2={w / 2} y2={h - 2} />
-            <line x1={2} y1={h / 2} x2={w - 2} y2={h / 2} />
-            {/* Cusp dots */}
-            <circle cx={w * 0.25} cy={h * 0.3} r={1.4} fill="#94a3b8" stroke="none" />
-            <circle cx={w * 0.75} cy={h * 0.3} r={1.4} fill="#94a3b8" stroke="none" />
-            <circle cx={w * 0.25} cy={h * 0.7} r={1.4} fill="#94a3b8" stroke="none" />
-            <circle cx={w * 0.75} cy={h * 0.7} r={1.4} fill="#94a3b8" stroke="none" />
+          <g pointerEvents="none">
+            <g stroke="#a8a29e" strokeWidth={0.45} opacity={0.4}>
+              {/* Subtle Y-shape grooves for upper molars, +-shape for lower */}
+              {arch === "upper" ? (
+                <>
+                  <path d={`M ${w / 2} ${h * 0.5} L ${w * 0.3} ${h * 0.2}`} />
+                  <path d={`M ${w / 2} ${h * 0.5} L ${w * 0.7} ${h * 0.2}`} />
+                  <path d={`M ${w / 2} ${h * 0.5} L ${w / 2} ${h * 0.85}`} />
+                </>
+              ) : (
+                <>
+                  <line x1={w / 2} y1={h * 0.18} x2={w / 2} y2={h * 0.82} />
+                  <line x1={w * 0.18} y1={h / 2} x2={w * 0.82} y2={h / 2} />
+                </>
+              )}
+            </g>
+            {/* Cusp dots — refined, smaller, low-key */}
+            <g fill="#a8a29e" opacity={0.45}>
+              <circle cx={w * 0.28} cy={h * 0.3} r={1.1} />
+              <circle cx={w * 0.72} cy={h * 0.3} r={1.1} />
+              <circle cx={w * 0.28} cy={h * 0.7} r={1.1} />
+              <circle cx={w * 0.72} cy={h * 0.7} r={1.1} />
+            </g>
           </g>
         )}
         {(cat === "incisor" || cat === "canine") && !missing && (
-          <g stroke="#94a3b8" strokeWidth={0.55} opacity={0.4} pointerEvents="none">
-            {/* Incisal edge highlight */}
-            <path d={`M ${w * 0.2} ${h * 0.85} Q ${w / 2} ${h - 1} ${w * 0.8} ${h * 0.85}`} fill="none" />
+          <g stroke="#a8a29e" strokeWidth={0.45} opacity={0.35} pointerEvents="none">
+            <path d={`M ${w * 0.22} ${h * 0.82} Q ${w / 2} ${h - 1} ${w * 0.78} ${h * 0.82}`} fill="none" />
           </g>
         )}
 
@@ -1088,10 +1206,10 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch,
           </g>
         )}
 
-        {/* Priority badge — small dot top-right for non-MEDIUM priorities */}
+        {/* Priority badge — small dot top-left for non-MEDIUM priorities */}
         {tooth?.priority && tooth.priority !== "MEDIUM" && !missing && (
           <circle
-            cx={w - 2}
+            cx={2}
             cy={2}
             r={2.5}
             fill={
@@ -1103,6 +1221,35 @@ function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch,
             strokeWidth={0.8}
             pointerEvents="none"
           />
+        )}
+
+        {/* Multi-issue count badge — top-right corner, shown when ≥2 distinct issues */}
+        {issueCount >= 2 && !missing && (
+          <g pointerEvents="none">
+            <circle cx={w - 2} cy={2} r={4} fill="#1e293b" stroke="white" strokeWidth={0.8} />
+            <text
+              x={w - 2}
+              y={4.5}
+              textAnchor="middle"
+              fontSize={5.5}
+              fontWeight={800}
+              fill="white"
+            >
+              {issueCount}
+            </text>
+          </g>
+        )}
+
+        {/* Multi-issue dot strip — small colored dots near the bottom of
+            the tooth showing each surface issue's color. Lets the doctor
+            see at a glance "this tooth has 3 different issues across
+            different surfaces". */}
+        {surfaceIssueColors.length > 1 && !missing && (
+          <g transform={`translate(${w / 2 - (surfaceIssueColors.length * 2.4 - 1) / 2}, ${h - 4})`} pointerEvents="none">
+            {surfaceIssueColors.map((color, i) => (
+              <circle key={i} cx={i * 2.4} cy={0} r={0.9} fill={color} />
+            ))}
+          </g>
         )}
       </g>
 
@@ -1362,15 +1509,50 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
             />
           </div>
 
-          {/* Compact inline legend */}
-          <div className="flex flex-wrap gap-2 text-[10px] text-stone-600 px-1">
-            {STATUSES.filter((s) => s !== "HEALTHY" && s !== "PROBLEM" && s !== "UNDER_TREATMENT" && s !== "TREATED").map((s) => (
-              <div key={s} className="flex items-center gap-1">
-                <span className={cn("w-2.5 h-2.5 rounded-full", STATUS_STYLES[s].dot)} />
-                <span>{STATUS_STYLES[s].label}</span>
+          {/* Status summary ribbon — counts of teeth per status */}
+          {(() => {
+            const counts: Partial<Record<ToothStatus, number>> = {};
+            for (const t of Object.values(teethByFdi)) {
+              counts[t.status as ToothStatus] = (counts[t.status as ToothStatus] || 0) + 1;
+            }
+            const totalIssues = Object.entries(counts).reduce((a, [s, n]) => a + (s !== "HEALTHY" ? (n || 0) : 0), 0);
+            // Multi-issue teeth: teeth with status non-healthy AND ≥1 surface issue
+            const multiIssueCount = Object.values(teethByFdi).filter((t) => {
+              const surfCount = t.surfaces ? Object.values(t.surfaces).filter((d) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment)).length : 0;
+              return surfCount >= 2 || (surfCount >= 1 && t.status !== "HEALTHY");
+            }).length;
+            return (
+              <div className="rounded-xl bg-white border border-stone-200 px-3 py-2.5 flex items-center gap-3 overflow-x-auto">
+                <div className="flex items-center gap-2 shrink-0 pr-3 border-r border-stone-100">
+                  <div className="flex flex-col">
+                    <span className="text-lg font-bold text-stone-900 leading-none">{totalIssues}</span>
+                    <span className="text-[9px] uppercase tracking-wider text-stone-400 font-semibold">Flagged</span>
+                  </div>
+                  {multiIssueCount > 0 && (
+                    <div className="flex flex-col">
+                      <span className="text-lg font-bold text-amber-600 leading-none">{multiIssueCount}</span>
+                      <span className="text-[9px] uppercase tracking-wider text-amber-500 font-semibold">Multi-issue</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(Object.entries(counts) as Array<[ToothStatus, number]>)
+                    .filter(([s, n]) => s !== "HEALTHY" && (n ?? 0) > 0)
+                    .sort((a, b) => (b[1] ?? 0) - (a[1] ?? 0))
+                    .map(([s, n]) => (
+                      <div key={s} className="inline-flex items-center gap-1 text-[10px]">
+                        <span className={cn("w-2 h-2 rounded-full", STATUS_STYLES[s].dot)} />
+                        <span className="font-semibold text-stone-700">{n}</span>
+                        <span className="text-stone-500">{STATUS_STYLES[s].label}</span>
+                      </div>
+                    ))}
+                  {totalIssues === 0 && (
+                    <span className="text-[11px] text-emerald-600 font-medium">All teeth healthy ✓</span>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
+            );
+          })()}
         </>
       )}
 
