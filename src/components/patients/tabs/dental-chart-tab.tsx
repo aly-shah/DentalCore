@@ -1,1174 +1,581 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+/**
+ * DentaCore Interactive Odontogram
+ *
+ * Modern dental chart wired to the v2 endpoints:
+ *   GET    /api/patients/[id]/dental-chart
+ *   POST   /api/patients/[id]/dental-chart
+ *   PUT    /api/dental-chart/[chartId]/teeth/[fdi]
+ *   DELETE /api/dental-chart/[chartId]/teeth/[fdi]
+ *
+ * Features:
+ *   - Adult + mixed-dentition + pediatric layouts
+ *   - FDI / Universal numbering toggle
+ *   - 14-status palette (HEALTHY, CARIES, FILLING, CROWN, BRIDGE,
+ *     IMPLANT, MISSING, ROOT_CANAL, EXTRACTION_NEEDED, MOBILITY,
+ *     FRACTURE, PROBLEM, UNDER_TREATMENT, TREATED)
+ *   - Surface-level marking (M / D / O / B / L) with notes
+ *   - Treatment planned vs completed
+ *   - Priority (EMERGENCY / HIGH / MEDIUM / COSMETIC)
+ *   - History timeline of tooth events
+ */
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Smile, Filter, Trash2, X as XIcon, ArrowLeft, Copy, Check, ChevronDown } from "lucide-react";
+import { Smile, Save, X as XIcon, History, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/modal";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { cn } from "@/lib/utils";
 
-type ToothStatus = "PROBLEM" | "UNDER_TREATMENT" | "TREATED" | "MISSING";
+// ───────── types ─────────
+
+type ToothStatus =
+  | "HEALTHY" | "CARIES" | "FILLING" | "CROWN" | "BRIDGE" | "IMPLANT"
+  | "MISSING" | "ROOT_CANAL" | "EXTRACTION_NEEDED" | "MOBILITY" | "FRACTURE"
+  | "PROBLEM" | "UNDER_TREATMENT" | "TREATED";
+
+type Surface = "mesial" | "distal" | "occlusal" | "buccal" | "lingual";
+
+interface SurfaceData {
+  condition?: string;
+  treatment?: string;
+  plannedTreatment?: string;
+  completedTreatment?: string;
+  notes?: string;
+}
 
 interface ToothRecord {
   id: string;
   patientId: string;
+  chartId: string | null;
   fdi: number;
   status: ToothStatus;
   conditions: string | null;
   treatment: string | null;
+  plannedTreatment: string | null;
+  completedTreatment: string | null;
+  surfaces: Partial<Record<Surface, SurfaceData>> | null;
+  priority: "EMERGENCY" | "HIGH" | "MEDIUM" | "COSMETIC";
   notes: string | null;
   updatedAt: string;
 }
 
-const CONDITIONS = [
-  "Cavity",
-  "Fracture",
-  "Infection",
-  "Discoloration",
-  "Sensitivity",
-  "Plaque/Tartar",
-  "Gum Disease",
-  "Wear",
-  "Chipped",
-  "Impacted",
+interface ChartResponse {
+  chart: { id: string; numberingSystem: string; dentition: string } | null;
+  teeth: ToothRecord[];
+  numberingSystem: string;
+  dentition: string;
+}
+
+interface HistoryResponse {
+  charts: Array<{ id: string; createdAt: string; isPrimary: boolean; teeth: ToothRecord[] }>;
+  events: Array<{
+    id: string;
+    occurredAt: string;
+    eventType: string;
+    previousStatus: string | null;
+    newStatus: string | null;
+    surface: string | null;
+    notes: string | null;
+    tooth: { fdi: number };
+  }>;
+}
+
+// ───────── status styling ─────────
+
+const STATUS_STYLES: Record<ToothStatus, { label: string; bg: string; border: string; text: string; dot: string }> = {
+  HEALTHY:            { label: "Healthy",         bg: "bg-white",       border: "border-stone-200",     text: "text-stone-700",   dot: "bg-stone-300" },
+  CARIES:             { label: "Caries",          bg: "bg-rose-50",     border: "border-rose-300",      text: "text-rose-700",    dot: "bg-rose-500" },
+  FILLING:            { label: "Filling",         bg: "bg-amber-50",    border: "border-amber-300",     text: "text-amber-700",   dot: "bg-amber-500" },
+  CROWN:              { label: "Crown",           bg: "bg-yellow-50",   border: "border-yellow-400",    text: "text-yellow-800",  dot: "bg-yellow-500" },
+  BRIDGE:             { label: "Bridge",          bg: "bg-orange-50",   border: "border-orange-300",    text: "text-orange-700",  dot: "bg-orange-500" },
+  IMPLANT:            { label: "Implant",         bg: "bg-blue-50",     border: "border-blue-300",      text: "text-blue-700",    dot: "bg-blue-500" },
+  MISSING:            { label: "Missing",         bg: "bg-stone-200",   border: "border-stone-400",     text: "text-stone-500",   dot: "bg-stone-500" },
+  ROOT_CANAL:         { label: "Root Canal",      bg: "bg-purple-50",   border: "border-purple-300",    text: "text-purple-700",  dot: "bg-purple-500" },
+  EXTRACTION_NEEDED:  { label: "Extract",         bg: "bg-red-100",     border: "border-red-400",       text: "text-red-700",     dot: "bg-red-600" },
+  MOBILITY:           { label: "Mobile",          bg: "bg-pink-50",     border: "border-pink-300",      text: "text-pink-700",    dot: "bg-pink-500" },
+  FRACTURE:           { label: "Fracture",        bg: "bg-violet-50",   border: "border-violet-300",    text: "text-violet-700",  dot: "bg-violet-500" },
+  PROBLEM:            { label: "Problem",         bg: "bg-rose-50",     border: "border-rose-300",      text: "text-rose-700",    dot: "bg-rose-400" },
+  UNDER_TREATMENT:    { label: "In Treatment",    bg: "bg-cyan-50",     border: "border-cyan-300",      text: "text-cyan-700",    dot: "bg-cyan-500" },
+  TREATED:            { label: "Treated",         bg: "bg-emerald-50",  border: "border-emerald-300",   text: "text-emerald-700", dot: "bg-emerald-500" },
+};
+
+const STATUSES: ToothStatus[] = [
+  "HEALTHY", "CARIES", "FILLING", "CROWN", "BRIDGE", "IMPLANT",
+  "ROOT_CANAL", "EXTRACTION_NEEDED", "MOBILITY", "FRACTURE",
+  "MISSING", "UNDER_TREATMENT", "TREATED",
 ];
 
-const TREATMENTS = [
-  "",
-  "Filling",
-  "Root Canal",
-  "Crown",
-  "Extraction",
-  "Bridge",
-  "Implant",
-  "Cleaning",
-  "Whitening",
-  "Veneer",
-  "Sealant",
-  "Bonding",
-];
+// ───────── numbering systems ─────────
 
-const STATUS_LABEL: Record<ToothStatus, string> = {
-  PROBLEM: "Problem",
-  UNDER_TREATMENT: "Under treatment",
-  TREATED: "Treated",
-  MISSING: "Missing",
+const UNIVERSAL_MAP: Record<number, string> = {
+  18: "1",  17: "2",  16: "3",  15: "4",  14: "5",  13: "6",  12: "7",  11: "8",
+  21: "9",  22: "10", 23: "11", 24: "12", 25: "13", 26: "14", 27: "15", 28: "16",
+  38: "17", 37: "18", 36: "19", 35: "20", 34: "21", 33: "22", 32: "23", 31: "24",
+  41: "25", 42: "26", 43: "27", 44: "28", 45: "29", 46: "30", 47: "31", 48: "32",
+  55: "A", 54: "B", 53: "C", 52: "D", 51: "E",
+  61: "F", 62: "G", 63: "H", 64: "I", 65: "J",
+  75: "K", 74: "L", 73: "M", 72: "N", 71: "O",
+  81: "P", 82: "Q", 83: "R", 84: "S", 85: "T",
 };
 
-const STATUS_STYLES: Record<ToothStatus, string> = {
-  PROBLEM: "bg-red-100 border-red-400 text-red-700 hover:bg-red-200",
-  UNDER_TREATMENT:
-    "bg-amber-100 border-amber-400 text-amber-700 hover:bg-amber-200",
-  TREATED:
-    "bg-emerald-100 border-emerald-500 text-emerald-700 hover:bg-emerald-200",
-  MISSING:
-    "bg-stone-200 border-stone-400 text-stone-400 hover:bg-stone-300 line-through",
+const ADULT_UPPER_RIGHT = [18, 17, 16, 15, 14, 13, 12, 11];
+const ADULT_UPPER_LEFT  = [21, 22, 23, 24, 25, 26, 27, 28];
+const ADULT_LOWER_RIGHT = [48, 47, 46, 45, 44, 43, 42, 41];
+const ADULT_LOWER_LEFT  = [31, 32, 33, 34, 35, 36, 37, 38];
+
+const PRIMARY_UPPER_RIGHT = [55, 54, 53, 52, 51];
+const PRIMARY_UPPER_LEFT  = [61, 62, 63, 64, 65];
+const PRIMARY_LOWER_RIGHT = [85, 84, 83, 82, 81];
+const PRIMARY_LOWER_LEFT  = [71, 72, 73, 74, 75];
+
+const SURFACE_LABELS: Record<Surface, string> = {
+  mesial: "M (Mesial)",
+  distal: "D (Distal)",
+  occlusal: "O (Occlusal)",
+  buccal: "B (Buccal)",
+  lingual: "L (Lingual)",
 };
 
-const STATUS_DOT: Record<ToothStatus, string> = {
-  PROBLEM: "bg-red-500",
-  UNDER_TREATMENT: "bg-amber-500",
-  TREATED: "bg-emerald-500",
-  MISSING: "bg-stone-500",
-};
+// ───────── component ─────────
 
-function parseConditions(raw: string | null): string[] {
-  if (!raw) return [];
-  try {
-    const v = JSON.parse(raw);
-    if (Array.isArray(v)) return v.map(String);
-  } catch {
-    /* fall through */
-  }
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+export default function DentalChartTabDefault(props: { patientId: string; onExit?: () => void }) {
+  return <DentalChartTab {...props} />;
 }
 
-// ---------- Dental Chart (paper-style grid: buccal + occlusal views) ----------
+export function DentalChartTab({ patientId, onExit }: { patientId: string; onExit?: () => void }) {
+  // onExit is accepted for compatibility with the fullscreen tab launcher
+  // — its caller used to pass an exit handler to the previous chart. The
+  // modern panel-based UX doesn't need a separate exit; ignore safely.
+  void onExit;
+  const qc = useQueryClient();
+  const [numbering, setNumbering] = useState<"FDI" | "UNIVERSAL">("FDI");
+  const [dentition, setDentition] = useState<"ADULT" | "MIXED" | "PEDIATRIC">("ADULT");
+  const [selectedFdi, setSelectedFdi] = useState<number | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
-// Column order across the chart: 8 patient-RIGHT teeth, then 8 patient-LEFT teeth.
-const UPPER_BY_COL = [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28];
-const LOWER_BY_COL = [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38];
+  const { data: chartRes, isLoading } = useQuery({
+    queryKey: ["dental-chart", patientId],
+    queryFn: async (): Promise<ChartResponse> => {
+      const r = await fetch(`/api/patients/${patientId}/dental-chart`);
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to load chart");
+      return j.data;
+    },
+  });
 
-const COL_W = 46; // width of one tooth column
-const MID_GAP = 64; // extra space between col 7 and col 8 (for the UPPER / LINGUAL / LOWER labels)
-const SIDE_PAD = 60; // left / right margin (for the RIGHT / LEFT labels)
-const GRID_W = SIDE_PAD * 2 + 16 * COL_W + MID_GAP; // width of the permanent-teeth grid
+  const teethByFdi = useMemo(() => {
+    const m: Record<number, ToothRecord> = {};
+    for (const t of chartRes?.teeth ?? []) m[t.fdi] = t;
+    return m;
+  }, [chartRes]);
 
-const H_BUCCAL = 82; // height of a buccal-view (crown + roots) cell
-const H_OCCL = 38; // height of an occlusal-view cell
-const Y_NUM_TOP = 16; // upper FDI label baseline
-const Y_UB = 28; // upper buccal cell — top
-const Y_UO = Y_UB + H_BUCCAL + 2; // upper occlusal cell — top
-const Y_MID = Y_UO + H_OCCL + 12; // the LINGUAL divider line
-const Y_LO = Y_MID + 12; // lower occlusal cell — top
-const Y_LB = Y_LO + H_OCCL + 2; // lower buccal cell — top
-const Y_NUM_BOT = Y_LB + H_BUCCAL + 16; // lower FDI label baseline
-const VB_H = Y_NUM_BOT + 8;
-const MID_X = SIDE_PAD + 8 * COL_W + MID_GAP / 2;
+  const { data: history } = useQuery({
+    queryKey: ["dental-chart-history", patientId],
+    enabled: showHistory,
+    queryFn: async (): Promise<HistoryResponse> => {
+      const r = await fetch(`/api/patients/${patientId}/dental-chart/history`);
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to load history");
+      return j.data;
+    },
+  });
 
-// --- deciduous (primary teeth) oval chart, to the right of the main grid ---
-const DEC_GAP = 36;
-const DEC_RX = 92;
-const DEC_RY = 116;
-const DEC_W = DEC_RX * 2 + 96; // includes room for the a–e and R/L labels
-const DEC_CX = GRID_W + DEC_GAP + DEC_W / 2;
-const DEC_CY = VB_H / 2;
-const VB_W = GRID_W + DEC_GAP + DEC_W;
+  const createChart = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/dental-chart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numberingSystem: numbering, dentition }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to create chart");
+      return j.data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] }),
+  });
 
-const PRIMARY_LETTERS = ["a", "b", "c", "d", "e"];
-// 20 primary teeth around the oval, clockwise from the top:
-// Q6 (upper-left) → Q7 (lower-left) → Q8 (lower-right) → Q5 (upper-right)
-const DEC_TEETH: { fdi: number; theta: number }[] = (() => {
-  const out: { fdi: number; theta: number }[] = [];
-  const quads: { fdis: number[]; start: number }[] = [
-    { fdis: [61, 62, 63, 64, 65], start: 0 },
-    { fdis: [75, 74, 73, 72, 71], start: 90 },
-    { fdis: [81, 82, 83, 84, 85], start: 180 },
-    { fdis: [55, 54, 53, 52, 51], start: 270 },
-  ];
-  for (const q of quads) {
-    q.fdis.forEach((fdi, i) => {
-      out.push({ fdi, theta: ((q.start + (i + 0.5) * 18) * Math.PI) / 180 });
-    });
-  }
-  return out;
-})();
-
-function colX(c: number): number {
-  return SIDE_PAD + c * COL_W + (c >= 8 ? MID_GAP : 0) + COL_W / 2;
-}
-
-function toothType(fdi: number): "incisor" | "canine" | "premolar" | "molar" {
-  const d = fdi % 10;
-  if (d === 1 || d === 2) return "incisor";
-  if (d === 3) return "canine";
-  if (d === 4 || d === 5) return "premolar";
-  return "molar";
-}
-type ToothKind = ReturnType<typeof toothType>;
-
-function crownWidth(kind: ToothKind, fdi: number): number {
-  if (kind === "molar") return 38;
-  if (kind === "premolar") return 30;
-  if (kind === "canine") return 28;
-  return fdi % 10 === 1 ? 26 : 22; // central vs lateral incisor
-}
-
-// --- Buccal (side) view: a single continuous outline (crown + roots).
-//     Local box: x ∈ [-cw/2, cw/2], y ∈ [0, H_BUCCAL]. Occlusal/incisal edge near y = H_BUCCAL,
-//     root tip(s) near y ≈ 6, cervical (gum) line at y = CERV_Y. ---
-const CERV_Y = H_BUCCAL * 0.5; // cervical (gum) line
-const OCC_TOP_Y = H_BUCCAL - 9; // crown's occlusal "shoulders"
-
-function buccalToothPath(kind: ToothKind, cw: number, isUpper: boolean): string {
-  const yOccTop = OCC_TOP_Y;
-  const yOcc = H_BUCCAL - 1; // lowest point of the occlusal edge
-  const yCerv = CERV_Y;
-  const yTip = 6; // root tip(s)
-  const mid = (yOccTop + yCerv) / 2;
-  const rootMid = (yCerv + yTip) * 0.58;
-  const oh =
-    kind === "molar" ? cw * 0.48 : kind === "premolar" ? cw * 0.46 : kind === "canine" ? cw * 0.4 : cw * 0.48;
-  const nh =
-    kind === "molar" ? cw * 0.38 : kind === "premolar" ? cw * 0.32 : kind === "canine" ? cw * 0.26 : cw * 0.32;
-  const nRoots = kind === "molar" ? (isUpper ? 3 : 2) : 1;
-
-  // occlusal edge: continues from (-oh, yOccTop) to (oh, yOccTop)
-  let occ: string;
-  if (kind === "canine") {
-    const sh = yOccTop + (yOcc - yOccTop) * 0.5;
-    occ = `L ${-oh * 0.45} ${sh} L 0 ${yOcc + 2} L ${oh * 0.45} ${sh} L ${oh} ${yOccTop} `;
-  } else if (kind === "premolar") {
-    const vy = yOccTop + (yOcc - yOccTop) * 0.5;
-    occ = `Q ${-oh * 0.52} ${yOcc + 1} 0 ${vy} Q ${oh * 0.52} ${yOcc + 1} ${oh} ${yOccTop} `;
-  } else if (kind === "molar") {
-    const vy = yOccTop + (yOcc - yOccTop) * 0.55;
-    occ =
-      `Q ${-oh * 0.6} ${yOcc + 1} ${-oh * 0.27} ${vy} ` +
-      `Q 0 ${yOcc + 1} ${oh * 0.3} ${vy} ` +
-      `Q ${oh * 0.62} ${yOcc + 1} ${oh} ${yOccTop} `;
-  } else {
-    occ = `Q 0 ${yOcc} ${oh} ${yOccTop} `; // incisor: a flattish rounded incisal edge
+  function fdiToDisplay(fdi: number): string {
+    if (numbering === "UNIVERSAL") return UNIVERSAL_MAP[fdi] ?? String(fdi);
+    return String(fdi);
   }
 
-  // crown sides
-  const rightCrown = `C ${oh + 1.5} ${mid} ${nh + (oh - nh) * 0.3} ${yCerv + 5} ${nh} ${yCerv} `;
-  const leftCrown = `C ${-(nh + (oh - nh) * 0.3)} ${yCerv + 5} ${-(oh + 1.5)} ${mid} ${-oh} ${yOccTop} `;
-
-  // roots: from (nh, yCerv) up to the tip(s) and back down to (-nh, yCerv)
-  let root: string;
-  if (nRoots === 1) {
-    root =
-      `C ${nh + 1} ${rootMid} ${nh * 0.5} ${yTip + 5} 0 ${yTip} ` +
-      `C ${-nh * 0.5} ${yTip + 5} ${-(nh + 1)} ${rootMid} ${-nh} ${yCerv} `;
-  } else {
-    const rth = nh * 1.35; // outer-root tip half-width (splayed)
-    const yNotch = yCerv * 0.5; // depth of the V between roots
-    if (nRoots === 2) {
-      root =
-        `C ${nh + 1} ${rootMid} ${rth} ${yTip + 8} ${rth} ${yTip + 3} ` +
-        `C ${rth} ${yTip + 9} ${rth * 0.4} ${yNotch + 4} 0 ${yNotch} ` +
-        `C ${-rth * 0.4} ${yNotch + 4} ${-rth} ${yTip + 9} ${-rth} ${yTip + 3} ` +
-        `C ${-rth} ${yTip + 8} ${-(nh + 1)} ${rootMid} ${-nh} ${yCerv} `;
-    } else {
-      const xNotch = rth * 0.5;
-      root =
-        `C ${nh + 1} ${rootMid} ${rth} ${yTip + 8} ${rth} ${yTip + 4} ` +
-        `C ${rth} ${yTip + 9} ${rth * 0.78} ${yNotch + 3} ${xNotch} ${yNotch} ` +
-        `C ${xNotch * 0.6} ${yNotch + 3} ${xNotch * 0.4} ${yTip + 6} 0 ${yTip} ` +
-        `C ${-xNotch * 0.4} ${yTip + 6} ${-xNotch * 0.6} ${yNotch + 3} ${-xNotch} ${yNotch} ` +
-        `C ${-rth * 0.78} ${yNotch + 3} ${-rth} ${yTip + 9} ${-rth} ${yTip + 4} ` +
-        `C ${-rth} ${yTip + 8} ${-(nh + 1)} ${rootMid} ${-nh} ${yCerv} `;
-    }
-  }
-
-  return `M ${-oh} ${yOccTop} ` + occ + rightCrown + root + leftCrown + `Z`;
-}
-
-function cervicalLinePath(kind: ToothKind, cw: number): string {
-  const w =
-    kind === "molar" ? cw * 0.36 : kind === "premolar" ? cw * 0.3 : kind === "canine" ? cw * 0.24 : cw * 0.3;
-  return `M ${-w} ${CERV_Y} L ${w} ${CERV_Y}`;
-}
-
-// --- Occlusal (top) view, drawn centred on the origin ---
-function occlusalOutlinePath(kind: ToothKind, fdi: number): string {
-  if (kind === "molar" || kind === "premolar") {
-    const s = kind === "molar" ? 13 : 11; // half-size of the rounded square
-    const r = 3.5;
+  function ToothButton({ fdi }: { fdi: number }) {
+    const t = teethByFdi[fdi];
+    const status = (t?.status ?? "HEALTHY") as ToothStatus;
+    const s = STATUS_STYLES[status];
+    const isSelected = selectedFdi === fdi;
+    const surfaceCount = t?.surfaces ? Object.values(t.surfaces).filter(Boolean).length : 0;
     return (
-      `M ${-s + r} ${-s} L ${s - r} ${-s} Q ${s} ${-s} ${s} ${-s + r} L ${s} ${s - r} ` +
-      `Q ${s} ${s} ${s - r} ${s} L ${-s + r} ${s} Q ${-s} ${s} ${-s} ${s - r} L ${-s} ${-s + r} ` +
-      `Q ${-s} ${-s} ${-s + r} ${-s} Z`
+      <button
+        type="button"
+        onClick={() => setSelectedFdi(fdi)}
+        title={`FDI ${fdi}${t ? ` — ${s.label}` : ""}`}
+        className={cn(
+          "relative w-7 h-9 sm:w-9 sm:h-12 rounded-md border-2 flex flex-col items-center justify-center text-[9px] sm:text-[10px] font-semibold transition-all cursor-pointer",
+          s.bg, s.border, s.text,
+          isSelected && "ring-2 ring-offset-1 ring-blue-500 scale-105 z-10",
+          status === "MISSING" && "opacity-50 line-through",
+        )}
+      >
+        <span>{fdiToDisplay(fdi)}</span>
+        {t && status !== "HEALTHY" && (
+          <span className={cn("absolute top-0 right-0 w-1.5 h-1.5 rounded-full -translate-y-0.5 translate-x-0.5", s.dot)} />
+        )}
+        {surfaceCount > 0 && (
+          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] text-stone-500 leading-none">
+            {surfaceCount}s
+          </span>
+        )}
+      </button>
     );
   }
-  if (kind === "canine") {
-    const w = 9.5;
-    const h = 13;
-    return `M 0 ${h} C ${-w} ${h * 0.3} ${-w} ${-h * 0.6} 0 ${-h} C ${w} ${-h * 0.6} ${w} ${h * 0.3} 0 ${h} Z`;
+
+  function ToothRow({ fdis }: { fdis: number[] }) {
+    return (
+      <div className="flex gap-0.5 sm:gap-1">
+        {fdis.map((fdi) => <ToothButton key={fdi} fdi={fdi} />)}
+      </div>
+    );
   }
-  // incisor: a horizontal lozenge
-  const w = fdi % 10 === 1 ? 12 : 9.5;
-  const h = 7.5;
-  return `M ${-w} 0 Q ${-w} ${-h} 0 ${-h} Q ${w} ${-h} ${w} 0 Q ${w} ${h} 0 ${h} Q ${-w} ${h} ${-w} 0 Z`;
-}
 
-function occlusalDividerPath(kind: ToothKind): string | null {
-  if (kind === "molar" || kind === "premolar") {
-    const s = kind === "molar" ? 13 : 11;
-    return `M ${-s + 2.5} 0 L ${s - 2.5} 0 M 0 ${-s + 2.5} L 0 ${s - 2.5}`; // a "+" → the boxed look
-  }
-  return null;
-}
-
-// Status → fill / stroke
-const STATUS_FILL: Record<ToothStatus, { fill: string; stroke: string; text: string }> = {
-  PROBLEM: { fill: "#fecaca", stroke: "#dc2626", text: "#991b1b" },
-  UNDER_TREATMENT: { fill: "#fde68a", stroke: "#d97706", text: "#92400e" },
-  TREATED: { fill: "#a7f3d0", stroke: "#059669", text: "#065f46" },
-  MISSING: { fill: "#e7e5e4", stroke: "#78716c", text: "#57534e" },
-};
-const NEUTRAL_FILL = { fill: "#ffffff", stroke: "#64748b", text: "#475569" };
-
-interface ToothColumnProps {
-  fdi: number;
-  jaw: "upper" | "lower";
-  col: number;
-  record?: ToothRecord;
-  onClick: (fdi: number) => void;
-  filterFlagged: boolean;
-  applyMode?: boolean;
-  isApplySource?: boolean;
-}
-
-function ToothColumn({
-  fdi,
-  jaw,
-  col,
-  record,
-  onClick,
-  filterFlagged,
-  applyMode,
-  isApplySource,
-}: ToothColumnProps) {
-  const kind = toothType(fdi);
-  const cw = crownWidth(kind, fdi);
-  const status = record?.status;
-  const colors = status ? STATUS_FILL[status] : NEUTRAL_FILL;
-  const missing = status === "MISSING";
-  const fill = status && !missing ? colors.fill : "#ffffff";
-  const stroke = colors.stroke;
-  const dimmed = filterFlagged && !record;
-  const conditions = record ? parseConditions(record.conditions) : [];
-
-  const x = colX(col);
-  const isUpper = jaw === "upper";
-  const occTop = isUpper ? Y_UO : Y_LO;
-  const buccalTop = isUpper ? Y_UB : Y_LB;
-  const cellTop = Math.min(buccalTop, occTop);
-  const cellBot = Math.max(buccalTop + H_BUCCAL, occTop + H_OCCL);
-
-  // Upper: roots up (no flip). Lower: flip vertically so the crown is at the top and roots point down.
-  const buccalTransform = isUpper
-    ? `translate(${x} ${Y_UB})`
-    : `translate(${x} ${Y_LB + H_BUCCAL}) scale(1 -1)`;
-  const occTransform = `translate(${x} ${occTop + H_OCCL / 2})`;
-
-  const toothD = buccalToothPath(kind, cw, isUpper);
-  const cervD = cervicalLinePath(kind, cw);
-  const occOutlineD = occlusalOutlinePath(kind, fdi);
-  const occDivD = occlusalDividerPath(kind);
-
-  const tooltipParts: string[] = [`Tooth ${fdi}`];
-  if (status) tooltipParts.push(STATUS_LABEL[status]);
-  if (conditions.length) tooltipParts.push(conditions.join(", "));
-  if (record?.treatment) tooltipParts.push(`Tx: ${record.treatment}`);
-  const tooltip = tooltipParts.join(" · ");
-
-  const applyTargetable = applyMode && !isApplySource;
-  const cls = isApplySource
-    ? "dental-tooth dental-tooth-source"
-    : applyTargetable
-    ? "dental-tooth dental-tooth-target"
-    : "dental-tooth";
+  const upperFdisLeft  = dentition === "MIXED" ? [...ADULT_UPPER_RIGHT, ...PRIMARY_UPPER_RIGHT]
+                      : dentition === "PEDIATRIC" ? PRIMARY_UPPER_RIGHT : ADULT_UPPER_RIGHT;
+  const upperFdisRight = dentition === "MIXED" ? [...PRIMARY_UPPER_LEFT, ...ADULT_UPPER_LEFT]
+                      : dentition === "PEDIATRIC" ? PRIMARY_UPPER_LEFT : ADULT_UPPER_LEFT;
+  const lowerFdisLeft  = dentition === "MIXED" ? [...ADULT_LOWER_RIGHT, ...PRIMARY_LOWER_RIGHT]
+                      : dentition === "PEDIATRIC" ? PRIMARY_LOWER_RIGHT : ADULT_LOWER_RIGHT;
+  const lowerFdisRight = dentition === "MIXED" ? [...PRIMARY_LOWER_LEFT, ...ADULT_LOWER_LEFT]
+                      : dentition === "PEDIATRIC" ? PRIMARY_LOWER_LEFT : ADULT_LOWER_LEFT;
 
   return (
-    <g
-      role="button"
-      onClick={() => onClick(fdi)}
-      style={{ cursor: applyTargetable ? "copy" : "pointer", opacity: dimmed ? 0.28 : 1 }}
-      className={cls}
-    >
-      <title>{applyTargetable ? `${tooltip} — click to copy` : tooltip}</title>
-      <rect
-        x={x - COL_W / 2 + 1}
-        y={cellTop}
-        width={COL_W - 2}
-        height={cellBot - cellTop}
-        fill="transparent"
-      />
-      <g transform={buccalTransform}>
-        <path d={toothD} fill={fill} stroke={stroke} strokeWidth={1.6} strokeLinejoin="round" />
-        <path d={cervD} fill="none" stroke={stroke} strokeWidth={1.3} strokeLinecap="round" />
-        {missing && (
-          <path
-            d={`M ${-cw * 0.36} ${CERV_Y + 4} L ${cw * 0.36} ${OCC_TOP_Y - 2} M ${cw * 0.36} ${CERV_Y + 4} L ${-cw * 0.36} ${OCC_TOP_Y - 2}`}
-            stroke={stroke}
-            strokeWidth={1.7}
-            strokeLinecap="round"
-          />
-        )}
-      </g>
-      <g transform={occTransform}>
-        <path d={occOutlineD} fill={fill} stroke={stroke} strokeWidth={1.5} strokeLinejoin="round" />
-        {occDivD && !missing && <path d={occDivD} fill="none" stroke={stroke} strokeWidth={1.2} />}
-      </g>
-      <text
-        x={x}
-        y={isUpper ? Y_NUM_TOP : Y_NUM_BOT}
-        textAnchor="middle"
-        fontSize={13}
-        fontWeight={700}
-        fill={status ? colors.text : "#475569"}
-        style={{ userSelect: "none" }}
-      >
-        {fdi}
-      </text>
-    </g>
-  );
-}
-
-interface DentalArchSvgProps {
-  recordsByFdi: Map<number, ToothRecord>;
-  onSelect: (fdi: number) => void;
-  filterFlagged: boolean;
-  applyMode?: boolean;
-  applySourceFdi?: number | null;
-}
-
-function DentalArchSvg({
-  recordsByFdi,
-  onSelect,
-  filterFlagged,
-  applyMode,
-  applySourceFdi,
-}: DentalArchSvgProps) {
-  return (
-    <svg
-      viewBox={`0 0 ${VB_W} ${VB_H}`}
-      className="w-full h-auto select-none"
-      role="img"
-      aria-label="Dental chart"
-    >
-      <style>{`
-        .dental-tooth { transition: filter 120ms ease-out; cursor: pointer; }
-        .dental-tooth:hover { filter: drop-shadow(0 1.5px 3px rgba(37,99,235,0.4)); }
-        .dental-tooth-target:hover { filter: drop-shadow(0 0 0 2px rgba(13,148,136,0.45)) drop-shadow(0 1.5px 3px rgba(13,148,136,0.4)); }
-        .dental-tooth-source { filter: drop-shadow(0 0 0 2.5px rgba(37,99,235,0.55)); }
-      `}</style>
-
-      {/* vertical dashed midline + UPPER / LINGUAL / LOWER */}
-      <line x1={MID_X} x2={MID_X} y1={Y_UB - 4} y2={Y_LB + H_BUCCAL + 4} stroke="#cbd5e1" strokeDasharray="3 4" strokeWidth={1.3} />
-      <text x={MID_X} y={Y_NUM_TOP} textAnchor="middle" fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.08em">
-        UPPER
-      </text>
-      <line x1={SIDE_PAD - 10} x2={MID_X - 36} y1={Y_MID} y2={Y_MID} stroke="#475569" strokeWidth={1.4} />
-      <line x1={MID_X + 36} x2={GRID_W - SIDE_PAD + 10} y1={Y_MID} y2={Y_MID} stroke="#475569" strokeWidth={1.4} />
-      <text x={MID_X} y={Y_MID + 4} textAnchor="middle" fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.08em">
-        LINGUAL
-      </text>
-      <text x={MID_X} y={Y_NUM_BOT} textAnchor="middle" fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.08em">
-        LOWER
-      </text>
-
-      {/* RIGHT / LEFT */}
-      <text x={12} y={Y_MID + 4} fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.05em">
-        RIGHT
-      </text>
-      <text x={GRID_W - 12} y={Y_MID + 4} textAnchor="end" fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.05em">
-        LEFT
-      </text>
-
-      {/* teeth */}
-      {UPPER_BY_COL.map((fdi, c) => (
-        <ToothColumn
-          key={`u${fdi}`}
-          fdi={fdi}
-          jaw="upper"
-          col={c}
-          record={recordsByFdi.get(fdi)}
-          onClick={onSelect}
-          filterFlagged={filterFlagged}
-          applyMode={applyMode}
-          isApplySource={applySourceFdi === fdi}
-        />
-      ))}
-      {LOWER_BY_COL.map((fdi, c) => (
-        <ToothColumn
-          key={`l${fdi}`}
-          fdi={fdi}
-          jaw="lower"
-          col={c}
-          record={recordsByFdi.get(fdi)}
-          onClick={onSelect}
-          filterFlagged={filterFlagged}
-          applyMode={applyMode}
-          isApplySource={applySourceFdi === fdi}
-        />
-      ))}
-
-      {/* ---- Deciduous (primary teeth) oval ---- */}
-      <text x={DEC_CX} y={14} textAnchor="middle" fontSize={13} fontWeight={700} fill="#475569" letterSpacing="0.08em">
-        DECIDUOUS
-      </text>
-      <ellipse cx={DEC_CX} cy={DEC_CY} rx={DEC_RX} ry={DEC_RY} fill="none" stroke="#94a3b8" strokeWidth={1.4} />
-      <line x1={DEC_CX} x2={DEC_CX} y1={DEC_CY - DEC_RY + 4} y2={DEC_CY + DEC_RY - 4} stroke="#cbd5e1" strokeDasharray="3 4" strokeWidth={1.2} />
-      <line x1={DEC_CX - DEC_RX - 10} x2={DEC_CX + DEC_RX + 10} y1={DEC_CY} y2={DEC_CY} stroke="#475569" strokeWidth={1.3} />
-      <text x={DEC_CX} y={DEC_CY - DEC_RY * 0.52} textAnchor="middle" fontSize={11} fontWeight={700} fill="#475569" letterSpacing="0.06em">UPPER</text>
-      <text x={DEC_CX} y={DEC_CY + DEC_RY * 0.52 + 4} textAnchor="middle" fontSize={11} fontWeight={700} fill="#475569" letterSpacing="0.06em">LOWER</text>
-      <text x={DEC_CX - DEC_RX - 28} y={DEC_CY + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#475569">R</text>
-      <text x={DEC_CX + DEC_RX + 28} y={DEC_CY + 4} textAnchor="middle" fontSize={12} fontWeight={700} fill="#475569">L</text>
-      {DEC_TEETH.map(({ fdi, theta }) => {
-        const kind = toothType(fdi);
-        const px = DEC_CX + DEC_RX * Math.sin(theta);
-        const py = DEC_CY - DEC_RY * Math.cos(theta);
-        const rec = recordsByFdi.get(fdi);
-        const status = rec?.status;
-        const colors = status ? STATUS_FILL[status] : NEUTRAL_FILL;
-        const missing = status === "MISSING";
-        const fill = status && !missing ? colors.fill : "#ffffff";
-        const stroke = colors.stroke;
-        const rot = (theta * 180) / Math.PI;
-        const occOutlineD = occlusalOutlinePath(kind, fdi);
-        const occDivD = occlusalDividerPath(kind);
-        const letter = PRIMARY_LETTERS[(fdi % 10) - 1] ?? "";
-        const lx = DEC_CX + (DEC_RX + 16) * Math.sin(theta);
-        const ly = DEC_CY - (DEC_RY + 16) * Math.cos(theta);
-        const applyTargetable = applyMode && applySourceFdi !== fdi;
-        const cls = applySourceFdi === fdi ? "dental-tooth dental-tooth-source" : applyTargetable ? "dental-tooth dental-tooth-target" : "dental-tooth";
-        return (
-          <g
-            key={`d${fdi}`}
-            role="button"
-            onClick={() => onSelect(fdi)}
-            className={cls}
-            style={{ cursor: applyTargetable ? "copy" : "pointer", opacity: filterFlagged && !rec ? 0.28 : 1 }}
-          >
-            <title>{`Tooth ${fdi}${status ? " · " + STATUS_LABEL[status] : ""}`}</title>
-            <rect x={px - 12} y={py - 12} width={24} height={24} fill="transparent" />
-            <g transform={`translate(${px} ${py}) rotate(${rot}) scale(0.68)`}>
-              <path d={occOutlineD} fill={fill} stroke={stroke} strokeWidth={2.1} strokeLinejoin="round" />
-              {occDivD && !missing && <path d={occDivD} fill="none" stroke={stroke} strokeWidth={1.7} />}
-              {missing && <path d="M -7 -7 L 7 7 M 7 -7 L -7 7" stroke={stroke} strokeWidth={2.4} strokeLinecap="round" />}
-            </g>
-            <text x={lx} y={ly} textAnchor="middle" dominantBaseline="middle" fontSize={10} fontWeight={700} fontStyle="italic" fill="#94a3b8">
-              {letter}
-            </text>
-          </g>
-        );
-      })}
-    </svg>
-  );
-}
-
-export function DentalChartTab({
-  patientId,
-  onExit,
-}: {
-  patientId: string;
-  onExit?: () => void;
-}) {
-  const qc = useQueryClient();
-  const queryKey = ["patients", patientId, "toothRecords"] as const;
-
-  const { data, isLoading } = useQuery({
-    queryKey,
-    queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/tooth-records`);
-      const json = await res.json();
-      return (json?.data ?? []) as ToothRecord[];
-    },
-    enabled: !!patientId,
-  });
-
-  const records = data ?? [];
-  const recordsByFdi = useMemo(() => {
-    const m = new Map<number, ToothRecord>();
-    for (const r of records) m.set(r.fdi, r);
-    return m;
-  }, [records]);
-
-  const [selectedFdi, setSelectedFdi] = useState<number | null>(null);
-  const [filterFlagged, setFilterFlagged] = useState(false);
-  const [applyTemplate, setApplyTemplate] = useState<ToothRecord | null>(null);
-  const [recordsOpen, setRecordsOpen] = useState(false); // mobile: collapsed by default
-
-  const upsert = useMutation({
-    mutationFn: async (input: {
-      fdi: number;
-      status: ToothStatus;
-      conditions: string[];
-      treatment: string;
-      notes: string;
-    }) => {
-      const res = await fetch(`/api/patients/${patientId}/tooth-records`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      });
-      if (!res.ok) throw new Error("save failed");
-      return res.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey }),
-  });
-
-  const remove = useMutation({
-    mutationFn: async (fdi: number) => {
-      const res = await fetch(
-        `/api/patients/${patientId}/tooth-records?fdi=${fdi}`,
-        { method: "DELETE" }
-      );
-      if (!res.ok) throw new Error("delete failed");
-      return res.json();
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey }),
-  });
-
-  // Lock body scroll while fullscreen + Esc to exit
-  useEffect(() => {
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        if (selectedFdi != null) return; // edit modal handles its own Esc
-        if (applyTemplate) {
-          setApplyTemplate(null);
-          return;
-        }
-        onExit?.();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = prevOverflow;
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onExit, selectedFdi, applyTemplate]);
-
-  const handleToothClick = (fdi: number) => {
-    if (applyTemplate) {
-      if (fdi === applyTemplate.fdi) return;
-      upsert.mutate({
-        fdi,
-        status: applyTemplate.status,
-        conditions: parseConditions(applyTemplate.conditions),
-        treatment: applyTemplate.treatment ?? "",
-        notes: applyTemplate.notes ?? "",
-      });
-      return;
-    }
-    setSelectedFdi(fdi);
-  };
-
-  const flaggedCount = records.length;
-  const counts = records.reduce(
-    (acc, r) => {
-      acc[r.status] = (acc[r.status] ?? 0) + 1;
-      return acc;
-    },
-    {} as Record<ToothStatus, number>
-  );
-
-  return (
-    <div
-      data-id="PATIENT-DENTAL-CHART-TAB"
-      className="fixed inset-0 z-40 bg-white flex flex-col"
-    >
-      {/* Top bar */}
-      <div className="shrink-0 border-b border-stone-200 bg-white">
-        <div className="flex items-center gap-3 px-4 sm:px-6 py-3">
-          {onExit && (
-            <button
-              onClick={onExit}
-              className="flex items-center gap-1.5 text-sm text-stone-500 hover:text-stone-800 cursor-pointer"
-              aria-label="Exit dental chart"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span className="hidden sm:inline">Back</span>
-            </button>
-          )}
-          <div className="w-px h-5 bg-stone-200 hidden sm:block" />
-          <div className="flex items-center gap-2 min-w-0">
-            <Smile className="w-5 h-5 text-blue-600 shrink-0" />
-            <h2 className="text-base font-semibold text-stone-900 truncate">
-              Dental Chart
-            </h2>
-            <Badge variant="default" className="text-[10px] shrink-0">
-              FDI
-            </Badge>
-            {flaggedCount > 0 && (
-              <Badge variant="primary" className="text-[10px] shrink-0">
-                {flaggedCount} recorded
-              </Badge>
-            )}
-          </div>
-
-          {/* Legend (desktop) */}
-          <div className="hidden lg:flex items-center gap-3 text-[11px] text-stone-500 ml-6">
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-400" /> Problem
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Under
-              treatment
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />{" "}
-              Treated
-            </span>
-            <span className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-stone-400" /> Missing
-            </span>
-          </div>
-
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              size="sm"
-              variant={filterFlagged ? "primary" : "outline"}
-              iconLeft={<Filter className="w-3.5 h-3.5" />}
-              onClick={() => setFilterFlagged((f) => !f)}
-            >
-              <span className="hidden sm:inline">
-                {filterFlagged ? "Showing flagged" : "Show only flagged"}
-              </span>
-              <span className="sm:hidden">
-                {filterFlagged ? "Flagged" : "All"}
-              </span>
-            </Button>
-            {onExit && (
-              <button
-                onClick={onExit}
-                className="p-2 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-800 cursor-pointer"
-                aria-label="Close"
-              >
-                <XIcon className="w-4 h-4" />
-              </button>
-            )}
-          </div>
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Smile className="w-5 h-5 text-blue-500" />
+          <h2 className="text-base font-semibold text-stone-900">Dental Chart</h2>
         </div>
-
-        {/* Legend (mobile) */}
-        <div className="lg:hidden flex items-center gap-3 px-4 sm:px-6 pb-2 text-[11px] text-stone-500 overflow-x-auto">
-          <span className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400" /> Problem
-          </span>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" /> Under tx
-          </span>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Treated
-          </span>
-          <span className="flex items-center gap-1.5 shrink-0">
-            <span className="w-2.5 h-2.5 rounded-full bg-stone-400" /> Missing
-          </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
+            {(["FDI", "UNIVERSAL"] as const).map((n) => (
+              <button key={n} onClick={() => setNumbering(n)} className={cn(
+                "px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all",
+                numbering === n ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"
+              )}>{n}</button>
+            ))}
+          </div>
+          <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
+            {(["ADULT", "MIXED", "PEDIATRIC"] as const).map((d) => (
+              <button key={d} onClick={() => setDentition(d)} className={cn(
+                "px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all",
+                dentition === d ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"
+              )}>{d.charAt(0) + d.slice(1).toLowerCase()}</button>
+            ))}
+          </div>
+          <Button size="sm" variant="outline" iconLeft={<History className="w-3.5 h-3.5" />} onClick={() => setShowHistory((v) => !v)}>
+            History
+          </Button>
         </div>
       </div>
 
-      {/* Body */}
-      {isLoading ? (
-        <div className="flex-1 flex items-center justify-center">
-          <LoadingSpinner />
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 flex flex-col lg:flex-row">
-          {/* Chart area */}
-          <div className="flex-1 min-w-0 overflow-auto flex flex-col bg-gradient-to-b from-stone-50 via-white to-stone-50">
-            {applyTemplate && (
-              <div className="sticky top-0 z-10 shrink-0 bg-blue-50 border-b border-blue-200 px-4 sm:px-6 py-2.5 flex items-center gap-3 flex-wrap">
-                <Copy className="w-4 h-4 text-blue-700 shrink-0" />
-                <div className="text-xs text-blue-900 min-w-0">
-                  <span className="font-semibold">
-                    Copying tooth {applyTemplate.fdi}
-                  </span>
-                  <span className="text-blue-700">
-                    {" "}
-                    ({STATUS_LABEL[applyTemplate.status]}
-                    {parseConditions(applyTemplate.conditions).length > 0 &&
-                      ` · ${parseConditions(applyTemplate.conditions).join(
-                        ", "
-                      )}`}
-                    {applyTemplate.treatment && ` · Tx: ${applyTemplate.treatment}`}
-                    ) — click teeth to apply
-                  </span>
-                </div>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  iconLeft={<Check className="w-3.5 h-3.5" />}
-                  onClick={() => setApplyTemplate(null)}
-                  className="ml-auto shrink-0"
-                >
-                  Done
-                </Button>
-              </div>
-            )}
-            <div className="m-auto w-full min-w-[1000px] sm:min-w-0 max-w-[1700px] px-3 sm:px-8 py-4 sm:py-8">
-              <p className="lg:hidden sticky left-0 z-[5] text-[11px] text-stone-400 pb-2 whitespace-nowrap">
-                Swipe sideways to see all teeth · tap any tooth to record an issue
-              </p>
-              <DentalArchSvg
-                recordsByFdi={recordsByFdi}
-                onSelect={handleToothClick}
-                filterFlagged={filterFlagged}
-                applyMode={!!applyTemplate}
-                applySourceFdi={applyTemplate?.fdi ?? null}
-              />
+      {isLoading && <div className="flex justify-center py-8"><LoadingSpinner size="md" /></div>}
 
-              {/* Counts strip */}
-              {flaggedCount > 0 && (
-                <div className="flex flex-wrap items-center gap-2 mt-6 text-xs justify-center">
-                  {(
-                    [
-                      "PROBLEM",
-                      "UNDER_TREATMENT",
-                      "TREATED",
-                      "MISSING",
-                    ] as ToothStatus[]
-                  )
-                    .filter((s) => counts[s])
-                    .map((s) => (
-                      <span
-                        key={s}
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-stone-200 text-stone-700 shadow-sm"
-                      >
-                        <span
-                          className={cn("w-2 h-2 rounded-full", STATUS_DOT[s])}
-                        />
-                        {STATUS_LABEL[s]}:{" "}
-                        <span className="font-semibold">{counts[s]}</span>
-                      </span>
-                    ))}
-                </div>
-              )}
-
-              <p className="text-center text-xs text-stone-400 mt-4">
-                Click any tooth to record findings
-              </p>
-            </div>
-          </div>
-
-          {/* Recorded list (sidebar on desktop, collapsible sheet on mobile) */}
-          {flaggedCount > 0 && (
-            <aside
-              className={cn(
-                "shrink-0 lg:w-80 border-t lg:border-t-0 lg:border-l border-stone-200 bg-white lg:overflow-y-auto lg:max-h-none",
-                recordsOpen ? "max-h-[55vh] overflow-y-auto" : "overflow-hidden"
-              )}
-            >
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setRecordsOpen((o) => !o)}
-                className="px-4 py-3 border-b border-stone-100 sticky top-0 bg-white z-10 flex items-center justify-between gap-2 cursor-pointer lg:cursor-default select-none"
-              >
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-stone-900">
-                    Recorded teeth ({flaggedCount})
-                  </h3>
-                  <p className="text-[11px] text-stone-400 hidden lg:block">
-                    Click an entry to edit
-                  </p>
-                </div>
-                <ChevronDown
-                  className={cn(
-                    "w-4 h-4 text-stone-400 shrink-0 lg:hidden transition-transform",
-                    recordsOpen && "rotate-180"
-                  )}
-                />
-              </div>
-              <div className={cn("p-3 space-y-2", !recordsOpen && "hidden lg:block")}>
-                {records.map((r) => {
-                  const conds = parseConditions(r.conditions);
-                  const isActiveSource = applyTemplate?.id === r.id;
-                  return (
-                    <div
-                      key={r.id}
-                      className={cn(
-                        "group relative flex items-start gap-3 p-3 rounded-lg transition-colors",
-                        isActiveSource
-                          ? "bg-blue-50 ring-1 ring-blue-300"
-                          : "bg-stone-50 hover:bg-stone-100"
-                      )}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => setSelectedFdi(r.fdi)}
-                        className="absolute inset-0 rounded-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-300"
-                        aria-label={`Edit tooth ${r.fdi}`}
-                      />
-                      <div
-                        className={cn(
-                          "relative w-9 h-9 rounded-md flex items-center justify-center text-xs font-semibold border-2 shrink-0",
-                          STATUS_STYLES[r.status]
-                        )}
-                      >
-                        {r.fdi}
-                      </div>
-                      <div className="relative min-w-0 flex-1 pointer-events-none">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium text-stone-900">
-                            Tooth {r.fdi}
-                          </span>
-                          <Badge
-                            variant={
-                              r.status === "TREATED"
-                                ? "success"
-                                : r.status === "UNDER_TREATMENT"
-                                ? "warning"
-                                : r.status === "MISSING"
-                                ? "default"
-                                : "danger"
-                            }
-                            className="text-[10px]"
-                          >
-                            {STATUS_LABEL[r.status]}
-                          </Badge>
-                        </div>
-                        {conds.length > 0 && (
-                          <div className="text-xs text-stone-500 mt-0.5">
-                            {conds.join(", ")}
-                          </div>
-                        )}
-                        {r.treatment && (
-                          <div className="text-xs text-blue-600 mt-0.5">
-                            Treatment: {r.treatment}
-                          </div>
-                        )}
-                        {r.notes && (
-                          <div className="text-xs text-stone-500 mt-0.5 italic">
-                            {r.notes}
-                          </div>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setApplyTemplate(isActiveSource ? null : r);
-                        }}
-                        className={cn(
-                          "relative shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-medium transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-300",
-                          isActiveSource
-                            ? "bg-blue-600 text-white hover:bg-blue-700"
-                            : "bg-white text-blue-700 border border-blue-200 hover:bg-blue-50"
-                        )}
-                        title={
-                          isActiveSource
-                            ? "Stop copying"
-                            : "Copy this record to other teeth"
-                        }
-                      >
-                        {isActiveSource ? (
-                          <>
-                            <Check className="w-3 h-3" />
-                            Active
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3 h-3" />
-                            Copy
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </aside>
-          )}
+      {!isLoading && !chartRes?.chart && (
+        <div className="rounded-xl border-2 border-dashed border-stone-200 p-6 text-center space-y-3">
+          <p className="text-sm text-stone-500">No active dental chart yet for this patient.</p>
+          <Button size="sm" iconLeft={<Plus className="w-3.5 h-3.5" />} onClick={() => createChart.mutate()} disabled={createChart.isPending}>
+            {createChart.isPending ? "Creating…" : "Create dental chart"}
+          </Button>
         </div>
       )}
 
-      <ToothEditModal
-        fdi={selectedFdi}
-        existing={selectedFdi != null ? recordsByFdi.get(selectedFdi) : undefined}
-        onClose={() => setSelectedFdi(null)}
-        onSave={async (input) => {
-          await upsert.mutateAsync(input);
-          setSelectedFdi(null);
-        }}
-        onClear={async (fdi) => {
-          await remove.mutateAsync(fdi);
-          setSelectedFdi(null);
-        }}
-        saving={upsert.isPending}
-        clearing={remove.isPending}
-      />
+      {!isLoading && chartRes?.chart && (
+        <>
+          <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3 sm:p-5 space-y-3 overflow-x-auto">
+            <div className="space-y-3 min-w-fit">
+              <div className="text-center text-[9px] uppercase tracking-wider text-stone-400">Upper · Right ◀  ▶ Left</div>
+              <div className="flex justify-center items-center gap-2">
+                <ToothRow fdis={upperFdisLeft} />
+                <div className="w-px h-8 bg-stone-200" />
+                <ToothRow fdis={upperFdisRight} />
+              </div>
+              <div className="h-px bg-stone-200 mx-8" />
+              <div className="flex justify-center items-center gap-2">
+                <ToothRow fdis={lowerFdisLeft} />
+                <div className="w-px h-8 bg-stone-200" />
+                <ToothRow fdis={lowerFdisRight} />
+              </div>
+              <div className="text-center text-[9px] uppercase tracking-wider text-stone-400">Lower</div>
+            </div>
+          </div>
+
+          <details className="text-[10px] text-stone-500">
+            <summary className="cursor-pointer select-none">Status legend</summary>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
+              {STATUSES.map((s) => (
+                <div key={s} className="flex items-center gap-1.5">
+                  <span className={cn("w-3 h-3 rounded-full", STATUS_STYLES[s].dot)} />
+                  <span>{STATUS_STYLES[s].label}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        </>
+      )}
+
+      {selectedFdi !== null && chartRes?.chart && (
+        <ToothPanel
+          chartId={chartRes.chart.id}
+          fdi={selectedFdi}
+          existing={teethByFdi[selectedFdi]}
+          onClose={() => setSelectedFdi(null)}
+          onSaved={() => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] })}
+        />
+      )}
+
+      {showHistory && (
+        <HistoryPanel history={history} onClose={() => setShowHistory(false)} />
+      )}
     </div>
   );
 }
 
-interface ToothEditModalProps {
-  fdi: number | null;
+// ───────── tooth editor panel ─────────
+
+function ToothPanel({
+  chartId, fdi, existing, onClose, onSaved,
+}: {
+  chartId: string;
+  fdi: number;
   existing?: ToothRecord;
   onClose: () => void;
-  onSave: (input: {
-    fdi: number;
-    status: ToothStatus;
-    conditions: string[];
-    treatment: string;
-    notes: string;
-  }) => Promise<void> | void;
-  onClear: (fdi: number) => Promise<void> | void;
-  saving: boolean;
-  clearing: boolean;
-}
+  onSaved: () => void;
+}) {
+  const qc = useQueryClient();
+  const [status, setStatus] = useState<ToothStatus>(existing?.status ?? "HEALTHY");
+  const [priority, setPriority] = useState(existing?.priority ?? "MEDIUM");
+  const [plannedTreatment, setPlannedTreatment] = useState(existing?.plannedTreatment ?? "");
+  const [completedTreatment, setCompletedTreatment] = useState(existing?.completedTreatment ?? "");
+  const [conditions, setConditions] = useState(existing?.conditions ?? "");
+  const [notes, setNotes] = useState(existing?.notes ?? "");
+  const [surfaces, setSurfaces] = useState<Partial<Record<Surface, SurfaceData>>>(existing?.surfaces ?? {});
 
-function ToothEditModal({
-  fdi,
-  existing,
-  onClose,
-  onSave,
-  onClear,
-  saving,
-  clearing,
-}: ToothEditModalProps) {
-  const isOpen = fdi != null;
-  const [status, setStatus] = useState<ToothStatus>("PROBLEM");
-  const [conditions, setConditions] = useState<string[]>([]);
-  const [treatment, setTreatment] = useState("");
-  const [notes, setNotes] = useState("");
-  const [customCondition, setCustomCondition] = useState("");
+  const save = useMutation({
+    mutationFn: async () => {
+      const body = { status, priority, plannedTreatment, completedTreatment, conditions, notes, surfaces };
+      const r = await fetch(`/api/dental-chart/${chartId}/teeth/${fdi}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to save");
+      return j.data;
+    },
+    onSuccess: () => {
+      onSaved();
+      onClose();
+    },
+  });
 
-  // re-sync when modal opens or FDI changes
-  const syncKey = `${fdi}-${existing?.id ?? "new"}-${isOpen}`;
-  const [prevKey, setPrevKey] = useState(syncKey);
-  if (syncKey !== prevKey) {
-    setPrevKey(syncKey);
-    if (isOpen) {
-      setStatus(existing?.status ?? "PROBLEM");
-      setConditions(parseConditions(existing?.conditions ?? null));
-      setTreatment(existing?.treatment ?? "");
-      setNotes(existing?.notes ?? "");
-      setCustomCondition("");
-    }
+  const reset = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/dental-chart/${chartId}/teeth/${fdi}`, { method: "DELETE" });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to reset");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dental-chart"] });
+      onClose();
+    },
+  });
+
+  function updateSurface(s: Surface, field: keyof SurfaceData, value: string) {
+    setSurfaces((prev) => ({
+      ...prev,
+      [s]: { ...(prev[s] ?? {}), [field]: value || undefined },
+    }));
   }
 
-  if (fdi == null) return null;
-
-  const toggleCondition = (c: string) => {
-    setConditions((prev) =>
-      prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]
-    );
-  };
-
-  const addCustom = () => {
-    const v = customCondition.trim();
-    if (!v) return;
-    if (!conditions.includes(v)) setConditions([...conditions, v]);
-    setCustomCondition("");
-  };
-
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title={`Tooth ${fdi}`}
-      subtitle="Update status, conditions, treatment, and notes"
-      size="lg"
-      footer={
-        <>
-          {existing && (
-            <Button
-              variant="ghost"
-              size="sm"
-              iconLeft={<Trash2 className="w-3.5 h-3.5" />}
-              onClick={() => onClear(fdi)}
-              loading={clearing}
-              disabled={saving}
-              className="mr-auto text-red-600 hover:bg-red-50"
-            >
-              Clear record
-            </Button>
-          )}
-          <Button variant="ghost" size="sm" onClick={onClose} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="sm"
-            loading={saving}
-            disabled={clearing}
-            onClick={() =>
-              onSave({ fdi, status, conditions, treatment, notes })
-            }
-          >
-            Save
-          </Button>
-        </>
-      }
-    >
-      <div className="space-y-5">
-        {/* Status */}
-        <div>
-          <label className="block text-xs font-medium text-stone-600 mb-2">
-            Status
-          </label>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {(
-              ["PROBLEM", "UNDER_TREATMENT", "TREATED", "MISSING"] as ToothStatus[]
-            ).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setStatus(s)}
-                className={cn(
-                  "px-3 py-2 rounded-lg text-xs font-medium border-2 transition-all cursor-pointer",
-                  status === s
-                    ? STATUS_STYLES[s]
-                    : "bg-white border-stone-200 text-stone-500 hover:bg-stone-50"
-                )}
-              >
-                {STATUS_LABEL[s]}
-              </button>
-            ))}
+    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="bg-white w-full sm:w-[480px] sm:max-h-[88vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 bg-white border-b border-stone-100 p-4 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <span className="text-lg font-bold text-stone-900">Tooth #{fdi}</span>
+            <span className={cn("px-2 py-0.5 rounded text-[10px] font-medium border", STATUS_STYLES[status].border, STATUS_STYLES[status].text, STATUS_STYLES[status].bg)}>
+              {STATUS_STYLES[status].label}
+            </span>
           </div>
+          <button onClick={onClose} className="p-1 hover:bg-stone-100 rounded-md text-stone-400 hover:text-stone-700">
+            <XIcon className="w-4 h-4" />
+          </button>
         </div>
 
-        {/* Conditions */}
-        <div>
-          <label className="block text-xs font-medium text-stone-600 mb-2">
-            Conditions
-          </label>
-          <div className="flex flex-wrap gap-1.5">
-            {CONDITIONS.map((c) => {
-              const on = conditions.includes(c);
-              return (
+        <div className="p-4 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Status</label>
+            <div className="grid grid-cols-3 gap-1.5">
+              {STATUSES.map((s) => (
                 <button
-                  key={c}
-                  type="button"
-                  onClick={() => toggleCondition(c)}
+                  key={s}
+                  onClick={() => setStatus(s)}
                   className={cn(
-                    "px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer",
-                    on
-                      ? "bg-blue-50 border-blue-300 text-blue-700"
-                      : "bg-white border-stone-200 text-stone-500 hover:bg-stone-50"
+                    "px-2 py-1.5 rounded-lg border-2 text-[10px] font-semibold transition-all",
+                    status === s
+                      ? `${STATUS_STYLES[s].border} ${STATUS_STYLES[s].bg} ${STATUS_STYLES[s].text}`
+                      : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
                   )}
                 >
-                  {c}
+                  {STATUS_STYLES[s].label}
                 </button>
-              );
-            })}
-            {conditions
-              .filter((c) => !CONDITIONS.includes(c))
-              .map((c) => (
-                <span
-                  key={c}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-medium bg-blue-50 border border-blue-300 text-blue-700"
-                >
-                  {c}
-                  <button
-                    type="button"
-                    onClick={() => toggleCondition(c)}
-                    className="p-0.5 rounded-full hover:bg-blue-100 cursor-pointer"
-                  >
-                    <XIcon className="w-2.5 h-2.5" />
-                  </button>
-                </span>
               ))}
+            </div>
           </div>
-          <div className="flex gap-2 mt-2">
-            <Input
-              value={customCondition}
-              onChange={(e) => setCustomCondition(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  addCustom();
-                }
-              }}
-              placeholder="Add custom condition…"
-              className="flex-1"
-            />
-            <Button variant="outline" size="sm" onClick={addCustom}>
-              Add
+
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Priority</label>
+            <div className="flex gap-1">
+              {(["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPriority(p)}
+                  className={cn(
+                    "flex-1 px-2 py-1 rounded-md border text-[10px] font-semibold",
+                    priority === p
+                      ? p === "EMERGENCY" ? "border-red-300 bg-red-50 text-red-700"
+                      : p === "HIGH" ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : p === "MEDIUM" ? "border-blue-300 bg-blue-50 text-blue-700"
+                      : "border-stone-300 bg-stone-50 text-stone-700"
+                      : "border-stone-200 bg-white text-stone-400"
+                  )}
+                >
+                  {p.charAt(0) + p.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <Input label="Conditions" placeholder="e.g. Cavity, Fracture, Sensitivity" value={conditions} onChange={(e) => setConditions(e.target.value)} />
+          <Input label="Planned Treatment" placeholder="e.g. Root Canal, Crown" value={plannedTreatment} onChange={(e) => setPlannedTreatment(e.target.value)} />
+          <Input label="Completed Treatment" placeholder="e.g. Filling — composite occlusal" value={completedTreatment} onChange={(e) => setCompletedTreatment(e.target.value)} />
+
+          <div>
+            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Surfaces</label>
+            <div className="space-y-2">
+              {(Object.keys(SURFACE_LABELS) as Surface[]).map((s) => {
+                const data = surfaces[s] ?? {};
+                const hasData = data.condition || data.treatment || data.plannedTreatment || data.completedTreatment || data.notes;
+                return (
+                  <details key={s} className="bg-stone-50 rounded-lg border border-stone-200" open={!!hasData}>
+                    <summary className="px-3 py-2 cursor-pointer text-[11px] font-semibold text-stone-700 flex items-center justify-between select-none">
+                      <span>{SURFACE_LABELS[s]}</span>
+                      {hasData && <span className="text-[9px] text-blue-500 font-normal">●</span>}
+                    </summary>
+                    <div className="p-2 pt-0 space-y-1.5">
+                      <input
+                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
+                        placeholder="Condition (e.g. Caries)"
+                        value={data.condition ?? ""}
+                        onChange={(e) => updateSurface(s, "condition", e.target.value)}
+                      />
+                      <input
+                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
+                        placeholder="Planned treatment"
+                        value={data.plannedTreatment ?? ""}
+                        onChange={(e) => updateSurface(s, "plannedTreatment", e.target.value)}
+                      />
+                      <input
+                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
+                        placeholder="Completed treatment"
+                        value={data.completedTreatment ?? ""}
+                        onChange={(e) => updateSurface(s, "completedTreatment", e.target.value)}
+                      />
+                      <input
+                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
+                        placeholder="Notes"
+                        value={data.notes ?? ""}
+                        onChange={(e) => updateSurface(s, "notes", e.target.value)}
+                      />
+                    </div>
+                  </details>
+                );
+              })}
+            </div>
+          </div>
+
+          <Textarea label="Tooth Notes" placeholder="Patient-history relevant notes for this tooth…" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+          {save.isError && <p className="text-[11px] text-red-500">{(save.error as Error).message}</p>}
+        </div>
+
+        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-3 flex items-center justify-between gap-2">
+          <button
+            onClick={() => reset.mutate()}
+            disabled={reset.isPending || !existing}
+            className="px-3 py-1.5 rounded-md text-[11px] font-medium text-stone-500 hover:text-red-600 disabled:opacity-30 transition-colors"
+          >
+            Reset tooth
+          </button>
+          <div className="flex items-center gap-2">
+            <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
+            <Button size="sm" iconLeft={<Save className="w-3.5 h-3.5" />} onClick={() => save.mutate()} disabled={save.isPending}>
+              {save.isPending ? "Saving…" : "Save"}
             </Button>
           </div>
         </div>
-
-        {/* Treatment */}
-        <div>
-          <label className="block text-xs font-medium text-stone-600 mb-2">
-            Planned / current treatment
-          </label>
-          <Select
-            value={treatment}
-            onChange={(e) => setTreatment(e.target.value)}
-            options={TREATMENTS.map((t) => ({
-              value: t,
-              label: t || "— None —",
-            }))}
-          />
-        </div>
-
-        {/* Notes */}
-        <div>
-          <label className="block text-xs font-medium text-stone-600 mb-2">
-            Notes
-          </label>
-          <Textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={3}
-            placeholder="Clinical notes, observations, history…"
-          />
-        </div>
       </div>
-    </Modal>
+    </div>
+  );
+}
+
+// ───────── history panel ─────────
+
+function HistoryPanel({ history, onClose }: { history?: HistoryResponse; onClose: () => void }) {
+  return (
+    <div className="rounded-xl border border-stone-200 bg-white">
+      <div className="flex items-center justify-between p-3 border-b border-stone-100">
+        <div className="flex items-center gap-2 text-sm font-semibold text-stone-900">
+          <History className="w-4 h-4 text-stone-500" />
+          Tooth Timeline
+        </div>
+        <button onClick={onClose} className="p-1 hover:bg-stone-100 rounded text-stone-400">
+          <XIcon className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="max-h-72 overflow-y-auto divide-y divide-stone-100">
+        {!history ? (
+          <div className="p-6 flex justify-center"><LoadingSpinner size="sm" /></div>
+        ) : history.events.length === 0 ? (
+          <div className="p-6 text-center text-xs text-stone-400">No events yet</div>
+        ) : (
+          history.events.map((e) => (
+            <div key={e.id} className="px-3 py-2 flex items-start gap-3 text-[11px]">
+              <span className="font-mono text-stone-400 shrink-0 w-12">#{e.tooth.fdi}</span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-stone-700">
+                  {e.eventType.replace(/_/g, " ").toLowerCase()}
+                  {e.previousStatus && e.newStatus && (
+                    <span className="text-stone-400 font-normal ml-1">: {e.previousStatus} → {e.newStatus}</span>
+                  )}
+                  {e.surface && <span className="text-stone-400 font-normal ml-1">· {e.surface}</span>}
+                </p>
+                {e.notes && <p className="text-stone-500 truncate">{e.notes}</p>}
+              </div>
+              <span className="text-stone-400 shrink-0 text-[10px]">
+                {new Date(e.occurredAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+              </span>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
