@@ -1355,6 +1355,17 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
    *  clicked teeth. Set by the "Apply to other teeth" button in the panel. */
   const [applyFromFdi, setApplyFromFdi] = useState<number | null>(null);
   const [appliedCount, setAppliedCount] = useState(0);
+  // Snapshot of the source tooth's data captured AT copy-mode entry so we
+  // don't depend on a possibly-stale teethByFdi lookup after refetch.
+  type ToothCopyPayload = {
+    status: ToothStatus;
+    priority: string;
+    conditions: string;
+    plannedTreatment: string;
+    completedTreatment: string;
+    surfaces: Partial<Record<Surface, SurfaceData>>;
+  };
+  const [applyFromData, setApplyFromData] = useState<ToothCopyPayload | null>(null);
 
   const { data: chartRes, isLoading } = useQuery({
     queryKey: ["dental-chart", patientId],
@@ -1415,21 +1426,28 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
   });
 
   /** Apply mutation — copies all clinical fields from a source tooth onto
-   *  the target tooth. Used by "Apply to other teeth" copy-mode. */
+   *  the target tooth. Uses applyFromData snapshot, not the live cache,
+   *  so it works even if React Query hasn't refetched the source yet. */
   const applyMutation = useMutation({
-    mutationFn: async ({ fromFdi, toFdi }: { fromFdi: number; toFdi: number }) => {
+    mutationFn: async ({ toFdi }: { toFdi: number }) => {
       if (!chartRes?.chart) return null;
-      const src = teethByFdi[fromFdi];
-      if (!src) throw new Error("source tooth missing");
-      const body = {
-        status: src.status,
-        priority: src.priority,
-        conditions: src.conditions ?? "",
-        plannedTreatment: src.plannedTreatment ?? "",
-        completedTreatment: src.completedTreatment ?? "",
-        surfaces: src.surfaces ?? null,
-        // intentionally NOT copying `notes` — those are tooth-specific
+      if (!applyFromData) throw new Error("no source data");
+      const body: Record<string, unknown> = {
+        status: applyFromData.status,
+        priority: applyFromData.priority,
+        conditions: applyFromData.conditions || "",
+        plannedTreatment: applyFromData.plannedTreatment || "",
+        completedTreatment: applyFromData.completedTreatment || "",
       };
+      // Only include `surfaces` if it's a non-empty object — the Zod
+      // schema rejects null and an empty object is a no-op anyway.
+      if (
+        applyFromData.surfaces &&
+        typeof applyFromData.surfaces === "object" &&
+        Object.keys(applyFromData.surfaces).length > 0
+      ) {
+        body.surfaces = applyFromData.surfaces;
+      }
       const r = await fetch(`/api/dental-chart/${chartRes.chart.id}/teeth/${toFdi}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -1617,7 +1635,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
                 </p>
               </div>
               <button
-                onClick={() => { setApplyFromFdi(null); setAppliedCount(0); }}
+                onClick={() => { setApplyFromFdi(null); setApplyFromData(null); setAppliedCount(0); }}
                 className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-white text-violet-700 hover:bg-violet-100 border border-violet-200 transition-colors shrink-0"
               >
                 Done
@@ -1634,9 +1652,9 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
               quickMark={quickMark}
               onQuickMark={(fdi, status) => quickMarkMutation.mutate({ fdi, status })}
               onClickTooth={(fdi) => {
-                if (applyFromFdi !== null && applyFromFdi !== fdi) {
+                if (applyFromFdi !== null && applyFromFdi !== fdi && applyFromData) {
                   // Copy-mode: paint source's data onto this tooth.
-                  applyMutation.mutate({ fromFdi: applyFromFdi, toFdi: fdi });
+                  applyMutation.mutate({ toFdi: fdi });
                   return;
                 }
                 setInitialSurface(null);
@@ -1771,11 +1789,12 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           patientId={patientId}
           onClose={() => { setSelectedFdi(null); setInitialSurface(null); }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] })}
-          onApplyToOthers={(sourceFdi) => {
+          onApplyToOthers={(sourceFdi, payload) => {
             setSelectedFdi(null);
             setInitialSurface(null);
             setAppliedCount(0);
             setApplyFromFdi(sourceFdi);
+            setApplyFromData(payload);
           }}
         />
       )}
@@ -1906,7 +1925,14 @@ function ToothPanel({
   patientId?: string;
   onClose: () => void;
   onSaved: () => void;
-  onApplyToOthers?: (sourceFdi: number) => void;
+  onApplyToOthers?: (sourceFdi: number, payload: {
+    status: ToothStatus;
+    priority: string;
+    conditions: string;
+    plannedTreatment: string;
+    completedTreatment: string;
+    surfaces: Partial<Record<Surface, SurfaceData>>;
+  }) => void;
 }) {
   const qc = useQueryClient();
   const cat = toothCategory(fdi);
@@ -2514,15 +2540,26 @@ function ToothPanel({
         {/* ───── Footer ───── */}
         <footer className="shrink-0 border-t border-stone-100 bg-stone-50/60">
           {/* "Apply to other teeth" — only enabled when there's saved data to copy */}
-          {existing && onApplyToOthers && (
+          {onApplyToOthers && (
             <button
               onClick={async () => {
-                // Save any pending edits first so the source reflects the current form state.
-                await save.mutateAsync().catch(() => null);
-                onApplyToOthers(fdi);
-                // close handled by save.onSuccess → handleClose; but if save failed we still close + enter copy mode.
+                // Snapshot the form state — this is the source we'll paint elsewhere.
+                const payload = {
+                  status, priority,
+                  conditions: conditions || "",
+                  plannedTreatment: plannedTreatment || "",
+                  completedTreatment: completedTreatment || "",
+                  surfaces: surfaces || {},
+                };
+                // Save any pending edits in parallel (best-effort).
+                save.mutate(undefined, {
+                  onError: () => {/* swallow — we still want copy-mode to start */},
+                });
+                // Hand off to the parent immediately with the current form state.
+                onApplyToOthers(fdi, payload);
+                setContentReady(false);
                 setMounted(false);
-                setTimeout(onClose, 200);
+                setTimeout(onClose, 220);
               }}
               className="w-full px-4 py-2 text-[11px] font-bold flex items-center justify-center gap-1.5 text-violet-700 hover:bg-violet-50 border-b border-stone-100 transition-colors"
               title="Save this tooth and copy its data to others"
