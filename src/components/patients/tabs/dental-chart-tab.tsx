@@ -20,9 +20,9 @@
  *   - Priority (EMERGENCY / HIGH / MEDIUM / COSMETIC)
  *   - History timeline of tooth events
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Smile, Save, X as XIcon, History, Plus } from "lucide-react";
+import { Smile, Save, X as XIcon, History, Plus, Activity, Layers, FileText, Trash2, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1453,7 +1453,15 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
   );
 }
 
-// ───────── tooth editor panel ─────────
+// ───────── tooth editor panel (right-slide drawer) ─────────
+
+const SURFACE_CHIPS: Array<{ key: Surface; label: string; short: string }> = [
+  { key: "occlusal", label: "Occlusal",  short: "O" },
+  { key: "mesial",   label: "Mesial",    short: "M" },
+  { key: "distal",   label: "Distal",    short: "D" },
+  { key: "buccal",   label: "Buccal",    short: "B" },
+  { key: "lingual",  label: "Lingual",   short: "L" },
+];
 
 function ToothPanel({
   chartId, fdi, existing, initialSurface, onClose, onSaved,
@@ -1466,6 +1474,8 @@ function ToothPanel({
   onSaved: () => void;
 }) {
   const qc = useQueryClient();
+  const cat = toothCategory(fdi);
+
   const [status, setStatus] = useState<ToothStatus>(existing?.status ?? "HEALTHY");
   const [priority, setPriority] = useState(existing?.priority ?? "MEDIUM");
   const [plannedTreatment, setPlannedTreatment] = useState(existing?.plannedTreatment ?? "");
@@ -1473,6 +1483,32 @@ function ToothPanel({
   const [conditions, setConditions] = useState(existing?.conditions ?? "");
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [surfaces, setSurfaces] = useState<Partial<Record<Surface, SurfaceData>>>(existing?.surfaces ?? {});
+
+  // Slide-in animation state
+  const [mounted, setMounted] = useState(false);
+  const [tab, setTab] = useState<"overview" | "surfaces" | "notes">(initialSurface ? "surfaces" : "overview");
+  const [activeSurface, setActiveSurface] = useState<Surface | null>(initialSurface ?? null);
+
+  useEffect(() => {
+    // Mount → next paint → animate in
+    const id = requestAnimationFrame(() => setMounted(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  const handleClose = () => {
+    setMounted(false);
+    setTimeout(onClose, 220);
+  };
+
+  // ESC closes
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") handleClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -1486,10 +1522,7 @@ function ToothPanel({
       if (!j.success) throw new Error(j.error || "Failed to save");
       return j.data;
     },
-    onSuccess: () => {
-      onSaved();
-      onClose();
-    },
+    onSuccess: () => { onSaved(); handleClose(); },
   });
 
   const reset = useMutation({
@@ -1501,7 +1534,7 @@ function ToothPanel({
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["dental-chart"] });
-      onClose();
+      handleClose();
     },
   });
 
@@ -1512,137 +1545,513 @@ function ToothPanel({
     }));
   }
 
+  function surfaceHasData(s: Surface): boolean {
+    const d = surfaces[s];
+    return !!(d?.condition || d?.completedTreatment || d?.plannedTreatment || d?.notes);
+  }
+
+  const statusStyle = STATUS_STYLES[status];
+
+  // Cmd/Ctrl + Enter = save
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") save.mutate();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, priority, plannedTreatment, completedTreatment, conditions, notes, surfaces]);
+
   return (
-    <div className="fixed inset-0 z-30 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
+    <div className="fixed inset-0 z-40">
+      {/* Backdrop */}
       <div
-        className="bg-white w-full sm:w-[480px] sm:max-h-[88vh] rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-y-auto"
+        onClick={handleClose}
+        className={cn(
+          "absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] transition-opacity duration-200",
+          mounted ? "opacity-100" : "opacity-0"
+        )}
+      />
+
+      {/* Right drawer */}
+      <aside
+        className={cn(
+          "absolute top-0 bottom-0 right-0 w-full sm:w-[440px] md:w-[480px] bg-white shadow-2xl flex flex-col",
+          "transition-transform duration-[220ms] ease-out",
+          mounted ? "translate-x-0" : "translate-x-full"
+        )}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-label={`Edit tooth ${fdi}`}
       >
-        <div className="sticky top-0 bg-white border-b border-stone-100 p-4 flex items-center justify-between z-10">
-          <div className="flex items-center gap-2">
-            <span className="text-lg font-bold text-stone-900">Tooth #{fdi}</span>
-            <span className={cn("px-2 py-0.5 rounded text-[10px] font-medium border", STATUS_STYLES[status].border, STATUS_STYLES[status].text, STATUS_STYLES[status].bg)}>
-              {STATUS_STYLES[status].label}
-            </span>
+        {/* ───── Header ───── */}
+        <header className="shrink-0 px-5 pt-5 pb-4 border-b border-stone-100">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {/* Mini tooth icon */}
+              <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border-2",
+                statusStyle.bg, statusStyle.border
+              )}>
+                <MiniToothIcon cat={cat} status={status} />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-xl font-bold text-stone-900 leading-none">#{fdi}</h2>
+                  <span className="text-[10px] uppercase tracking-wider font-semibold text-stone-400">{cat}</span>
+                </div>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className={cn("w-2 h-2 rounded-full", statusStyle.dot)} />
+                  <span className={cn("text-xs font-medium", statusStyle.text)}>{statusStyle.label}</span>
+                  {priority !== "MEDIUM" && (
+                    <span className={cn(
+                      "ml-1.5 inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-md",
+                      priority === "EMERGENCY" ? "bg-red-50 text-red-700"
+                        : priority === "HIGH" ? "bg-amber-50 text-amber-700"
+                        : "bg-violet-50 text-violet-700"
+                    )}>
+                      {priority === "EMERGENCY" && <AlertTriangle className="w-2.5 h-2.5" />}
+                      {priority.charAt(0) + priority.slice(1).toLowerCase()}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={handleClose}
+              aria-label="Close"
+              className="p-1.5 -m-1 rounded-lg hover:bg-stone-100 text-stone-400 hover:text-stone-700 transition-colors"
+            >
+              <XIcon className="w-5 h-5" />
+            </button>
           </div>
-          <button onClick={onClose} className="p-1 hover:bg-stone-100 rounded-md text-stone-400 hover:text-stone-700">
-            <XIcon className="w-4 h-4" />
-          </button>
+
+          {/* Tab bar */}
+          <nav className="flex gap-1 mt-4 -mb-2" role="tablist">
+            {([
+              { key: "overview", label: "Overview", icon: <Activity className="w-3.5 h-3.5" /> },
+              { key: "surfaces", label: "Surfaces", icon: <Layers className="w-3.5 h-3.5" /> },
+              { key: "notes",    label: "Notes",    icon: <FileText className="w-3.5 h-3.5" /> },
+            ] as const).map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={tab === t.key}
+                onClick={() => setTab(t.key)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-2 rounded-t-lg text-[11px] font-semibold transition-all border-b-2 -mb-px",
+                  tab === t.key
+                    ? "text-blue-600 border-blue-500 bg-blue-50/60"
+                    : "text-stone-500 border-transparent hover:text-stone-800 hover:bg-stone-50"
+                )}
+              >
+                {t.icon}
+                {t.label}
+                {t.key === "surfaces" && Object.values(surfaces).filter(Boolean).length > 0 && (
+                  <span className="ml-1 px-1.5 py-0 rounded-full bg-blue-100 text-blue-700 text-[9px] font-bold">
+                    {Object.values(surfaces).filter(Boolean).length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </header>
+
+        {/* ───── Body ───── */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+          {/* OVERVIEW TAB */}
+          {tab === "overview" && (
+            <>
+              {/* Status — visual grid */}
+              <section>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-stone-500">Status</label>
+                  {status !== "HEALTHY" && (
+                    <button
+                      onClick={() => setStatus("HEALTHY")}
+                      className="text-[10px] text-stone-400 hover:text-stone-700 font-medium"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {STATUSES.map((s) => {
+                    const style = STATUS_STYLES[s];
+                    const active = status === s;
+                    return (
+                      <button
+                        key={s}
+                        onClick={() => setStatus(s)}
+                        className={cn(
+                          "relative px-2 py-2.5 rounded-xl border-2 text-[11px] font-semibold transition-all flex flex-col items-center gap-1",
+                          active
+                            ? `${style.border} ${style.bg} ${style.text} shadow-sm`
+                            : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:shadow-sm"
+                        )}
+                      >
+                        <span className={cn("w-3 h-3 rounded-full transition-transform", style.dot, active && "scale-110")} />
+                        <span className="text-center leading-tight">{style.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Priority */}
+              <section>
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 block">Priority</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {(["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"] as const).map((p) => {
+                    const active = priority === p;
+                    const palette =
+                      p === "EMERGENCY" ? "border-red-300 bg-red-50 text-red-700"
+                      : p === "HIGH"    ? "border-amber-300 bg-amber-50 text-amber-700"
+                      : p === "MEDIUM"  ? "border-blue-300 bg-blue-50 text-blue-700"
+                      :                   "border-violet-300 bg-violet-50 text-violet-700";
+                    return (
+                      <button
+                        key={p}
+                        onClick={() => setPriority(p)}
+                        className={cn(
+                          "px-2 py-2 rounded-lg border-2 text-[10px] font-bold transition-all",
+                          active ? palette + " shadow-sm" : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
+                        )}
+                      >
+                        {p.charAt(0) + p.slice(1).toLowerCase()}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Conditions */}
+              <Input
+                label="Conditions"
+                placeholder="e.g. Cavity, Fracture, Sensitivity"
+                value={conditions}
+                onChange={(e) => setConditions(e.target.value)}
+              />
+
+              {/* Planned + Completed */}
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-cyan-600 mb-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Planned
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Root Canal Therapy, Crown D2740"
+                    value={plannedTreatment}
+                    onChange={(e) => setPlannedTreatment(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border-2 border-cyan-100 focus:border-cyan-400 focus:outline-none bg-cyan-50/30 placeholder:text-stone-400"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1.5 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Completed
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Filling — composite occlusal"
+                    value={completedTreatment}
+                    onChange={(e) => setCompletedTreatment(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border-2 border-emerald-100 focus:border-emerald-400 focus:outline-none bg-emerald-50/30 placeholder:text-stone-400"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* SURFACES TAB */}
+          {tab === "surfaces" && (
+            <>
+              {/* Mini-tooth surface picker */}
+              <section>
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3 block">
+                  Tap a surface to edit it
+                </label>
+                <SurfacePicker
+                  cat={cat}
+                  surfaces={surfaces}
+                  status={status}
+                  active={activeSurface}
+                  onSelect={(s) => setActiveSurface(s)}
+                />
+              </section>
+
+              {/* Surface editor */}
+              {activeSurface && (
+                <section className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-md bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold">
+                        {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.short}
+                      </span>
+                      {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.label}
+                    </h3>
+                    {surfaceHasData(activeSurface) && (
+                      <button
+                        onClick={() => setSurfaces((prev) => ({ ...prev, [activeSurface]: undefined }))}
+                        className="text-[10px] text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" /> Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <input
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white focus:border-blue-400 focus:outline-none"
+                      placeholder="Condition (e.g. Caries)"
+                      value={surfaces[activeSurface]?.condition ?? ""}
+                      onChange={(e) => updateSurface(activeSurface, "condition", e.target.value)}
+                    />
+                    <input
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-cyan-200 bg-cyan-50/30 focus:border-cyan-400 focus:outline-none"
+                      placeholder="Planned treatment"
+                      value={surfaces[activeSurface]?.plannedTreatment ?? ""}
+                      onChange={(e) => updateSurface(activeSurface, "plannedTreatment", e.target.value)}
+                    />
+                    <input
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-emerald-200 bg-emerald-50/30 focus:border-emerald-400 focus:outline-none"
+                      placeholder="Completed treatment"
+                      value={surfaces[activeSurface]?.completedTreatment ?? ""}
+                      onChange={(e) => updateSurface(activeSurface, "completedTreatment", e.target.value)}
+                    />
+                    <input
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white focus:border-blue-400 focus:outline-none"
+                      placeholder="Notes"
+                      value={surfaces[activeSurface]?.notes ?? ""}
+                      onChange={(e) => updateSurface(activeSurface, "notes", e.target.value)}
+                    />
+                  </div>
+                </section>
+              )}
+
+              {/* Surface chip list (alternative view) */}
+              <div className="flex flex-wrap gap-1.5">
+                {SURFACE_CHIPS.map((c) => {
+                  const has = surfaceHasData(c.key);
+                  const active = activeSurface === c.key;
+                  return (
+                    <button
+                      key={c.key}
+                      onClick={() => setActiveSurface(c.key)}
+                      className={cn(
+                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all",
+                        active ? "border-blue-500 bg-blue-50 text-blue-700"
+                        : has ? "border-stone-300 bg-stone-50 text-stone-700"
+                        : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
+                      )}
+                    >
+                      <span className={cn(
+                        "w-4 h-4 rounded-md flex items-center justify-center text-[9px] font-bold",
+                        active ? "bg-blue-500 text-white" : has ? "bg-stone-300 text-white" : "bg-stone-100 text-stone-500"
+                      )}>
+                        {c.short}
+                      </span>
+                      {c.label}
+                      {has && <span className="w-1 h-1 rounded-full bg-blue-500" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
+          {/* NOTES TAB */}
+          {tab === "notes" && (
+            <>
+              <section>
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 block">
+                  Tooth Notes
+                </label>
+                <textarea
+                  rows={5}
+                  placeholder="Patient-history relevant notes for this tooth — symptoms, observations, treatment rationale…"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full px-3 py-2 text-sm rounded-lg border-2 border-stone-200 focus:border-blue-400 focus:outline-none placeholder:text-stone-400 resize-none"
+                />
+              </section>
+              <div className="text-[10px] text-stone-400 leading-relaxed">
+                Notes are saved with the tooth record. Audit history (status changes, treatment events) is captured automatically and visible in the chart-level <strong>History</strong> panel.
+              </div>
+            </>
+          )}
+
+          {save.isError && (
+            <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              {(save.error as Error).message}
+            </div>
+          )}
         </div>
 
-        <div className="p-4 space-y-4">
-          <div>
-            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Status</label>
-            <div className="grid grid-cols-3 gap-1.5">
-              {STATUSES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setStatus(s)}
-                  className={cn(
-                    "px-2 py-1.5 rounded-lg border-2 text-[10px] font-semibold transition-all",
-                    status === s
-                      ? `${STATUS_STYLES[s].border} ${STATUS_STYLES[s].bg} ${STATUS_STYLES[s].text}`
-                      : "border-stone-200 bg-white text-stone-500 hover:border-stone-300"
-                  )}
-                >
-                  {STATUS_STYLES[s].label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Priority</label>
-            <div className="flex gap-1">
-              {(["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"] as const).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPriority(p)}
-                  className={cn(
-                    "flex-1 px-2 py-1 rounded-md border text-[10px] font-semibold",
-                    priority === p
-                      ? p === "EMERGENCY" ? "border-red-300 bg-red-50 text-red-700"
-                      : p === "HIGH" ? "border-amber-300 bg-amber-50 text-amber-700"
-                      : p === "MEDIUM" ? "border-blue-300 bg-blue-50 text-blue-700"
-                      : "border-stone-300 bg-stone-50 text-stone-700"
-                      : "border-stone-200 bg-white text-stone-400"
-                  )}
-                >
-                  {p.charAt(0) + p.slice(1).toLowerCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <Input label="Conditions" placeholder="e.g. Cavity, Fracture, Sensitivity" value={conditions} onChange={(e) => setConditions(e.target.value)} />
-          <Input label="Planned Treatment" placeholder="e.g. Root Canal, Crown" value={plannedTreatment} onChange={(e) => setPlannedTreatment(e.target.value)} />
-          <Input label="Completed Treatment" placeholder="e.g. Filling — composite occlusal" value={completedTreatment} onChange={(e) => setCompletedTreatment(e.target.value)} />
-
-          <div>
-            <label className="text-xs font-medium text-stone-600 mb-1.5 block">Surfaces</label>
-            <div className="space-y-2">
-              {(Object.keys(SURFACE_LABELS) as Surface[]).map((s) => {
-                const data = surfaces[s] ?? {};
-                const hasData = data.condition || data.treatment || data.plannedTreatment || data.completedTreatment || data.notes;
-                return (
-                  <details key={s} className="bg-stone-50 rounded-lg border border-stone-200" open={!!hasData || initialSurface === s}>
-                    <summary className="px-3 py-2 cursor-pointer text-[11px] font-semibold text-stone-700 flex items-center justify-between select-none">
-                      <span>{SURFACE_LABELS[s]}</span>
-                      {hasData && <span className="text-[9px] text-blue-500 font-normal">●</span>}
-                    </summary>
-                    <div className="p-2 pt-0 space-y-1.5">
-                      <input
-                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
-                        placeholder="Condition (e.g. Caries)"
-                        value={data.condition ?? ""}
-                        onChange={(e) => updateSurface(s, "condition", e.target.value)}
-                      />
-                      <input
-                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
-                        placeholder="Planned treatment"
-                        value={data.plannedTreatment ?? ""}
-                        onChange={(e) => updateSurface(s, "plannedTreatment", e.target.value)}
-                      />
-                      <input
-                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
-                        placeholder="Completed treatment"
-                        value={data.completedTreatment ?? ""}
-                        onChange={(e) => updateSurface(s, "completedTreatment", e.target.value)}
-                      />
-                      <input
-                        className="w-full px-2 py-1 text-[11px] rounded-md border border-stone-200 bg-white"
-                        placeholder="Notes"
-                        value={data.notes ?? ""}
-                        onChange={(e) => updateSurface(s, "notes", e.target.value)}
-                      />
-                    </div>
-                  </details>
-                );
-              })}
-            </div>
-          </div>
-
-          <Textarea label="Tooth Notes" placeholder="Patient-history relevant notes for this tooth…" rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
-
-          {save.isError && <p className="text-[11px] text-red-500">{(save.error as Error).message}</p>}
-        </div>
-
-        <div className="sticky bottom-0 bg-white border-t border-stone-100 p-3 flex items-center justify-between gap-2">
+        {/* ───── Footer ───── */}
+        <footer className="shrink-0 border-t border-stone-100 p-3 flex items-center justify-between gap-2 bg-stone-50/60">
           <button
             onClick={() => reset.mutate()}
             disabled={reset.isPending || !existing}
-            className="px-3 py-1.5 rounded-md text-[11px] font-medium text-stone-500 hover:text-red-600 disabled:opacity-30 transition-colors"
+            className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-500 hover:text-red-600 hover:bg-red-50 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-stone-500 transition-colors flex items-center gap-1.5"
           >
-            Reset tooth
+            <Trash2 className="w-3.5 h-3.5" />
+            Reset
           </button>
           <div className="flex items-center gap-2">
-            <Button size="sm" variant="ghost" onClick={onClose}>Cancel</Button>
-            <Button size="sm" iconLeft={<Save className="w-3.5 h-3.5" />} onClick={() => save.mutate()} disabled={save.isPending}>
-              {save.isPending ? "Saving…" : "Save"}
-            </Button>
+            <span className="text-[10px] text-stone-400 mr-1 hidden sm:inline">
+              ⌘ Enter to save · Esc to close
+            </span>
+            <button
+              onClick={handleClose}
+              className="px-3 py-2 rounded-lg text-[11px] font-semibold text-stone-600 hover:bg-stone-100 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={() => save.mutate()}
+              disabled={save.isPending}
+              className="px-4 py-2 rounded-lg text-[11px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-60 transition-colors flex items-center gap-1.5 shadow-sm"
+            >
+              <Save className="w-3.5 h-3.5" />
+              {save.isPending ? "Saving…" : "Save tooth"}
+            </button>
           </div>
-        </div>
-      </div>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+/**
+ * Mini tooth icon for the panel header. Small SVG of the tooth category.
+ */
+function MiniToothIcon({ cat, status }: { cat: ToothCategory; status: ToothStatus }) {
+  const fill = status !== "HEALTHY" ? `url(#g-${status})` : "url(#tooth-pearl)";
+  // Inline the gradient defs since this SVG isn't inside ArchView's defs.
+  return (
+    <svg viewBox="0 0 24 24" className="w-7 h-7">
+      <defs>
+        <linearGradient id="mini-pearl" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffffff" />
+          <stop offset="100%" stopColor="#e7e5e4" />
+        </linearGradient>
+      </defs>
+      {cat === "incisor" || cat === "canine" ? (
+        <path
+          d="M 12 3 Q 18 4 18 12 Q 18 19 12 21 Q 6 19 6 12 Q 6 4 12 3 Z"
+          fill={status === "HEALTHY" ? "url(#mini-pearl)" : fill}
+          stroke="#475569"
+          strokeWidth="1"
+        />
+      ) : (
+        <rect
+          x="4"
+          y="4"
+          width="16"
+          height="16"
+          rx={cat === "premolar" ? 4 : 3}
+          fill={status === "HEALTHY" ? "url(#mini-pearl)" : fill}
+          stroke="#475569"
+          strokeWidth="1"
+        />
+      )}
+      {(cat === "molar" || cat === "premolar") && (
+        <g stroke="#94a3b8" strokeWidth="0.6" opacity="0.7">
+          <line x1="12" y1="6" x2="12" y2="18" />
+          <line x1="6" y1="12" x2="18" y2="12" />
+        </g>
+      )}
+    </svg>
+  );
+}
+
+/**
+ * Visual surface picker — mini tooth diagram in the Surfaces tab.
+ * Click a surface to focus the editor below.
+ */
+function SurfacePicker({
+  cat, surfaces, status, active, onSelect,
+}: {
+  cat: ToothCategory;
+  surfaces: Partial<Record<Surface, SurfaceData>>;
+  status: ToothStatus;
+  active: Surface | null;
+  onSelect: (s: Surface) => void;
+}) {
+  const w = 180;
+  const h = 180;
+  const cw = w / 3;
+  const ch = h / 3;
+  const surfaceFor = (s: Surface) => {
+    const d = surfaces[s];
+    return surfaceFill(status, d);
+  };
+  const cells: Array<{ s: Surface; x: number; y: number; w: number; h: number; label: string }> = [
+    { s: "buccal",   x: cw,     y: 0,        w: cw, h: ch, label: "B" },
+    { s: "lingual",  x: cw,     y: 2 * ch,   w: cw, h: ch, label: "L" },
+    { s: "mesial",   x: 0,      y: ch,       w: cw, h: ch, label: "M" },
+    { s: "distal",   x: 2 * cw, y: ch,       w: cw, h: ch, label: "D" },
+    { s: "occlusal", x: cw,     y: ch,       w: cw, h: ch, label: "O" },
+  ];
+  return (
+    <div className="flex justify-center">
+      <svg viewBox={`-10 -10 ${w + 20} ${h + 20}`} width="200" height="200" className="select-none">
+        {/* Outer tooth outline */}
+        {cat === "incisor" || cat === "canine" ? (
+          <path
+            d={`M ${w / 2} 0 Q ${w + 8} 4 ${w} ${h * 0.45} Q ${w} ${h} ${w / 2} ${h} Q 0 ${h} 0 ${h * 0.45} Q -8 4 ${w / 2} 0 Z`}
+            fill="#fafafa"
+            stroke="#cbd5e1"
+            strokeWidth="2"
+          />
+        ) : (
+          <rect x={0} y={0} width={w} height={h} rx={cat === "premolar" ? 16 : 12} fill="#fafafa" stroke="#cbd5e1" strokeWidth="2" />
+        )}
+
+        {/* Surface cells */}
+        {cells.map(({ s, x, y, w: cellW, h: cellH, label }) => {
+          const data = surfaces[s];
+          const hasData = !!(data?.condition || data?.completedTreatment || data?.plannedTreatment);
+          const isActive = active === s;
+          const { fill, stroke } = surfaceFor(s);
+          return (
+            <g key={s} onClick={() => onSelect(s)} style={{ cursor: "pointer" }}>
+              <rect
+                x={x + 4}
+                y={y + 4}
+                width={cellW - 8}
+                height={cellH - 8}
+                rx={6}
+                fill={hasData ? fill : isActive ? "#dbeafe" : "white"}
+                stroke={isActive ? "#3b82f6" : hasData ? stroke : "#e2e8f0"}
+                strokeWidth={isActive ? 2.5 : 1.5}
+                opacity={hasData ? 0.95 : 1}
+                style={{ transition: "all 0.15s ease" }}
+              />
+              <text
+                x={x + cellW / 2}
+                y={y + cellH / 2 + 5}
+                textAnchor="middle"
+                fontSize={hasData || isActive ? 18 : 16}
+                fontWeight={800}
+                fill={hasData ? "#1e293b" : isActive ? "#1d4ed8" : "#cbd5e1"}
+                pointerEvents="none"
+              >
+                {label}
+              </text>
+              {hasData && (
+                <circle
+                  cx={x + cellW - 8}
+                  cy={y + 8}
+                  r={3}
+                  fill="#3b82f6"
+                  pointerEvents="none"
+                />
+              )}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
