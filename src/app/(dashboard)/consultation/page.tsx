@@ -28,6 +28,7 @@ import { SystemEvents } from "@/modules/core/events";
 import { useAuth } from "@/lib/auth-context";
 import { cn, getClinicToday, toClinicDay, CLINIC_TZ } from "@/lib/utils";
 import type { Patient, Appointment, Triage } from "@/types";
+import { TemplatePicker, type ConsultationTemplate } from "@/components/consultation/template-picker";
 
 interface RxRow { id: string; medicineName: string; dosage: string; frequency: string; duration: string; instructions: string; }
 
@@ -120,6 +121,45 @@ export default function ConsultationPage() {
   // Follow-up
   const [followUpDate, setFollowUpDate] = useState("");
   const [followUpNotes, setFollowUpNotes] = useState("");
+
+  // Procedure template picker
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [appliedTemplate, setAppliedTemplate] = useState<ConsultationTemplate | null>(null);
+
+  function applyTemplate(t: ConsultationTemplate) {
+    if (t.defaultChiefComplaint) setComplaint(t.defaultChiefComplaint);
+    if (t.defaultClinicalFindings) setFindings(t.defaultClinicalFindings);
+    if (t.defaultDiagnosis) setDiagnosis(t.defaultDiagnosis);
+    if (t.defaultProcedureNotes) setPlan(t.defaultProcedureNotes);
+    if (t.defaultPostOpInstructions) setAdvice(t.defaultPostOpInstructions);
+    if (t.defaultMaterialsUsed) {
+      setInternalNotes((prev) =>
+        prev.trim()
+          ? `${prev}\n\nMaterials: ${t.defaultMaterialsUsed}`
+          : `Materials: ${t.defaultMaterialsUsed}`
+      );
+    }
+    if (Array.isArray(t.defaultRxItems) && t.defaultRxItems.length > 0) {
+      setRxRows(
+        t.defaultRxItems.map((r) => ({
+          id: crypto.randomUUID(),
+          medicineName: r.medicineName,
+          dosage: r.dosage,
+          frequency: r.frequency,
+          duration: r.duration,
+          instructions: r.instructions ?? "",
+        }))
+      );
+    }
+    if (typeof t.defaultFollowUpDays === "number" && t.defaultFollowUpDays > 0) {
+      const d = new Date();
+      d.setDate(d.getDate() + t.defaultFollowUpDays);
+      setFollowUpDate(toClinicDay(d));
+    }
+    setAppliedTemplate(t);
+    setTemplatePickerOpen(false);
+    if (visitStatus === "not_started") setVisitStatus("in_progress");
+  }
 
   // Saving
   const [saving, setSaving] = useState(false);
@@ -485,6 +525,31 @@ export default function ConsultationPage() {
           {/* ===== CENTER — Live Consultation Workspace ===== */}
           <div className="lg:col-span-6 space-y-3">
             {error && <div className="bg-red-50 border border-red-100 text-red-600 text-sm rounded-xl px-4 py-2.5">{error}</div>}
+
+            {/* Template Picker Trigger */}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <button
+                onClick={() => setTemplatePickerOpen(true)}
+                className="group flex items-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 hover:border-blue-300 hover:shadow-sm transition-all"
+              >
+                <FileText className="w-3.5 h-3.5 text-blue-600" />
+                <span className="text-[11px] font-bold text-blue-700">Use procedure template</span>
+                <span className="text-[10px] text-blue-500 opacity-70 group-hover:opacity-100 transition-opacity">prefill notes & Rx</span>
+              </button>
+              {appliedTemplate && (
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-[10px] text-emerald-700">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  <span className="font-semibold">Applied:</span>
+                  <span>{appliedTemplate.name}</span>
+                  <button
+                    onClick={() => setAppliedTemplate(null)}
+                    className="hover:bg-emerald-100 rounded p-0.5 -mr-1"
+                  >
+                    <span className="text-emerald-500">×</span>
+                  </button>
+                </div>
+              )}
+            </div>
 
             {/* Section Progress */}
             <div className="hidden xl:flex items-center gap-1.5 text-[10px] font-medium">
@@ -856,6 +921,14 @@ export default function ConsultationPage() {
             {saving ? "..." : "Complete"}
           </Button>
         </div>
+      )}
+
+      {/* ===== Template Picker ===== */}
+      {templatePickerOpen && (
+        <TemplatePicker
+          onPick={applyTemplate}
+          onClose={() => setTemplatePickerOpen(false)}
+        />
       )}
     </div>
   );
