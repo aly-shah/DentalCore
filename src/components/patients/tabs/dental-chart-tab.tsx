@@ -143,6 +143,49 @@ const SURFACE_LABELS: Record<Surface, string> = {
 
 type ToothCategory = "incisor" | "canine" | "premolar" | "molar";
 
+/**
+ * Derive the visual "effective" status from all data on the tooth.
+ * Falls back to the explicit status when set, otherwise infers from
+ * conditions text, surface data, or treatment fields.  Lets the chart
+ * paint a tooth as "having a condition" even when the user only filled
+ * the conditions/surfaces fields and never explicitly changed status.
+ */
+function effectiveStatus(tooth: ToothRecord | undefined): ToothStatus {
+  if (!tooth) return "HEALTHY";
+  if (tooth.status && tooth.status !== "HEALTHY") return tooth.status as ToothStatus;
+
+  // Completed treatment → TREATED
+  if (tooth.completedTreatment?.trim()) return "TREATED";
+  for (const d of Object.values(tooth.surfaces ?? {})) {
+    if (d?.completedTreatment?.trim()) return "TREATED";
+  }
+
+  // Condition text → infer kind
+  const collectedText = [
+    tooth.conditions ?? "",
+    ...Object.values(tooth.surfaces ?? {}).map((d) => d?.condition ?? ""),
+  ].join(" ").toLowerCase();
+  if (collectedText.match(/cavit|caries|decay/))             return "CARIES";
+  if (collectedText.match(/fract|crack|chip/))               return "FRACTURE";
+  if (collectedText.match(/mobil/))                          return "MOBILITY";
+  if (collectedText.match(/abscess|infect|peri[a-z]*lesion/))return "PROBLEM";
+  if (collectedText.match(/erosion|attrit|abrasion/))        return "PROBLEM";
+  if (collectedText.match(/sensi/))                          return "PROBLEM";
+
+  // Planned treatment → flag as needs attention
+  if (tooth.plannedTreatment?.trim()) return "UNDER_TREATMENT";
+  for (const d of Object.values(tooth.surfaces ?? {})) {
+    if (d?.plannedTreatment?.trim()) return "UNDER_TREATMENT";
+  }
+
+  // Surface conditions (anything else) → generic PROBLEM
+  for (const d of Object.values(tooth.surfaces ?? {})) {
+    if (d?.condition?.trim()) return "PROBLEM";
+  }
+
+  return "HEALTHY";
+}
+
 function toothCategory(fdi: number): ToothCategory {
   // Position within quadrant (1 = central incisor, 8 = third molar).
   // For primary teeth (51-85): 1-2 incisors, 3 canine, 4-5 molars.
@@ -853,7 +896,8 @@ function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth,
 
       {/* Floating info card — appears top-right when hovering a tooth */}
       {hoveredFdi !== null && (() => {
-        const hStatus = (hoveredTooth?.status ?? "HEALTHY") as ToothStatus;
+        const hStatus = effectiveStatus(hoveredTooth ?? undefined);
+        const hExplicit = (hoveredTooth?.status ?? "HEALTHY") as ToothStatus;
         const hSurfaces = hoveredTooth?.surfaces
           ? (Object.entries(hoveredTooth.surfaces) as [Surface, SurfaceData | undefined][])
               .filter(([, d]) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment))
@@ -871,12 +915,15 @@ function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth,
                 </span>
               </div>
 
-              {/* Whole-tooth status */}
+              {/* Whole-tooth status — uses derived effective status */}
               <div className="flex items-center gap-1.5 mt-1.5 pb-1.5 border-b border-stone-100">
                 <span className={cn("w-2 h-2 rounded-full", STATUS_STYLES[hStatus].dot)} />
                 <span className="text-[11px] font-semibold text-stone-700">
                   {STATUS_STYLES[hStatus].label}
                 </span>
+                {hExplicit === "HEALTHY" && hStatus !== "HEALTHY" && (
+                  <span className="text-[9px] text-stone-400 italic">(inferred)</span>
+                )}
                 {hoveredTooth?.priority && hoveredTooth.priority !== "MEDIUM" && (
                   <span className={cn(
                     "ml-auto text-[9px] uppercase font-bold px-1.5 py-0.5 rounded",
@@ -968,8 +1015,12 @@ interface ArchToothProps {
  */
 function ArchTooth({ fdi, x, y, rotation, tooth, selected, hovered, label, arch, quickMark, onHover, onClickTooth, onClickSurface }: ArchToothProps) {
   const cat = toothCategory(fdi);
-  const status = (tooth?.status ?? "HEALTHY") as ToothStatus;
-  const missing = status === "MISSING";
+  // status = the visual / "effective" status (driven by data, not just the
+  // explicit field) so any condition / surface / planned treatment tints
+  // the tooth body. The user-explicit field is preserved at `tooth.status`.
+  const status = effectiveStatus(tooth);
+  const explicitStatus = (tooth?.status ?? "HEALTHY") as ToothStatus;
+  const missing = explicitStatus === "MISSING";
 
   // Per-category dimensions for the occlusal face — slightly larger
   // for the modern view so the anatomical detail is legible.
@@ -1526,13 +1577,17 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           {(() => {
             const counts: Partial<Record<ToothStatus, number>> = {};
             for (const t of Object.values(teethByFdi)) {
-              counts[t.status as ToothStatus] = (counts[t.status as ToothStatus] || 0) + 1;
+              // Use the effective (derived) status so teeth with only
+              // surface data / conditions are also counted.
+              const es = effectiveStatus(t);
+              counts[es] = (counts[es] || 0) + 1;
             }
             const totalIssues = Object.entries(counts).reduce((a, [s, n]) => a + (s !== "HEALTHY" ? (n || 0) : 0), 0);
-            // Multi-issue teeth: teeth with status non-healthy AND ≥1 surface issue
+            // Multi-issue teeth: teeth with derived non-healthy status AND ≥1 surface issue
             const multiIssueCount = Object.values(teethByFdi).filter((t) => {
               const surfCount = t.surfaces ? Object.values(t.surfaces).filter((d) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment)).length : 0;
-              return surfCount >= 2 || (surfCount >= 1 && t.status !== "HEALTHY");
+              const es = effectiveStatus(t);
+              return surfCount >= 2 || (surfCount >= 1 && es !== "HEALTHY");
             }).length;
             return (
               <div className="rounded-xl bg-white border border-stone-200 px-3 py-2.5 flex items-center gap-3 overflow-x-auto">
@@ -1664,6 +1719,29 @@ const CONDITION_CHIPS = [
   "Cavity", "Sensitivity", "Plaque", "Tartar", "Erosion", "Attrition",
   "Abrasion", "Discoloration", "Chipped", "Cracked", "Mobility",
   "Gingivitis", "Periodontitis", "Recession", "Abscess",
+];
+
+/**
+ * Quick-action conditions — most common per-surface findings.
+ * Each maps to a one-tap state-fill: clicking the pill adds the
+ * condition (or treatment) and dismisses the suggestion bar.
+ */
+const QUICK_CONDITIONS: Array<{
+  label: string;
+  field: "condition" | "plannedTreatment" | "completedTreatment";
+  value: string;
+  emoji: string;
+  tone: "rose" | "amber" | "emerald" | "cyan" | "stone";
+}> = [
+  { label: "Cavity",       field: "condition",          value: "Cavity",            emoji: "🔍", tone: "rose"   },
+  { label: "Sensitive",    field: "condition",          value: "Sensitivity",       emoji: "⚡", tone: "rose"   },
+  { label: "Plaque",       field: "condition",          value: "Plaque",            emoji: "🧫", tone: "amber"  },
+  { label: "Cracked",      field: "condition",          value: "Cracked",           emoji: "⚠️", tone: "rose"   },
+  { label: "Filling",      field: "plannedTreatment",   value: "Filling",           emoji: "🩹", tone: "cyan"   },
+  { label: "RCT",          field: "plannedTreatment",   value: "Root Canal",        emoji: "🦷", tone: "cyan"   },
+  { label: "Crown",        field: "plannedTreatment",   value: "Crown",             emoji: "👑", tone: "cyan"   },
+  { label: "Filled ✓",     field: "completedTreatment", value: "Composite Filling", emoji: "✓",  tone: "emerald" },
+  { label: "Cleaned ✓",    field: "completedTreatment", value: "Cleaning",          emoji: "✨", tone: "emerald" },
 ];
 
 /** Common dental procedures — chip presets for planned/completed treatment */
