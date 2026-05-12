@@ -5,7 +5,21 @@ import { jwtVerify } from "jose";
 const SECRET = new TextEncoder().encode(process.env.AUTH_SECRET || "");
 const COOKIE_NAME = "dentacore-session";
 
-const publicPaths = ["/login", "/signup", "/api/auth/login", "/api/auth/signup", "/portal", "/api/app/session", "/api/health", "/doctor-app"];
+// Public paths bypass the JWT session middleware. /api/cron/reminders
+// has its own CRON_SECRET-based auth (header / query / Bearer); the
+// middleware must NOT intercept it or the cron caller can never reach
+// the route handler.
+const publicPaths = [
+  "/login",
+  "/signup",
+  "/api/auth/login",
+  "/api/auth/signup",
+  "/portal",
+  "/api/app/session",
+  "/api/health",
+  "/api/cron/reminders",
+  "/doctor-app",
+];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
