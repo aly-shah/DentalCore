@@ -228,6 +228,8 @@ model Patient {
   toothRecords      ToothRecord[]
   orthoCases        OrthoCase[]
   beforeAfterImages BeforeAfterImage[]
+  DentalChart       DentalChart[]
+  TreatmentPlan     TreatmentPlan[]
 
   @@index([tenantId])
 }
@@ -316,20 +318,89 @@ model OrthoVisit {
 }
 
 model ToothRecord {
-  id          String   @id @default(cuid())
-  patientId   String
-  patient     Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  fdi         Int
-  status      String   @default("PROBLEM")
-  conditions  String?
-  treatment   String?
-  notes       String?
+  id        String       @id @default(cuid())
+  patientId String
+  patient   Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  chartId   String?
+  chart     DentalChart? @relation(fields: [chartId], references: [id], onDelete: SetNull)
+
+  fdi    Int // 11-48 permanent; 51-85 primary (mixed dentition)
+  status String @default("HEALTHY")
+  // HEALTHY / CARIES / FILLING / CROWN / BRIDGE / IMPLANT / MISSING /
+  // ROOT_CANAL / EXTRACTION_NEEDED / MOBILITY / FRACTURE / PROBLEM /
+  // UNDER_TREATMENT / TREATED
+
+  conditions String? // legacy: comma-separated condition tags
+  treatment  String? // legacy: single applied-treatment text
+
+  plannedTreatment   String?
+  completedTreatment String?
+
+  // Surface-level data: { mesial?: {...}, distal?, occlusal?, buccal?, lingual? }
+  // Each surface holds { condition?, treatment?, plannedTreatment?, completedTreatment?, notes? }
+  surfaces Json?
+
+  priority String  @default("MEDIUM") // EMERGENCY / HIGH / MEDIUM / COSMETIC
+  notes    String?
+
   updatedById String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  events ToothEvent[]
+
   @@unique([patientId, fdi])
   @@index([patientId])
+  @@index([chartId])
+}
+
+/// Versioned dental chart. A patient typically has one active chart with
+/// the current state; new charts are created when the dentist wants a
+/// "fresh exam" snapshot (e.g., at recall or new-patient exam).
+model DentalChart {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tenantId  String?
+
+  numberingSystem String @default("FDI") // FDI / UNIVERSAL
+  dentition       String @default("ADULT") // ADULT / MIXED / PEDIATRIC
+
+  isPrimary   Boolean @default(true)
+  createdById String?
+  notes       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  teeth ToothRecord[]
+
+  @@index([patientId])
+  @@index([tenantId])
+}
+
+/// Audit / history trail for tooth state changes. Lets us answer
+/// "show me everything that happened on tooth 16 for this patient".
+model ToothEvent {
+  id            String      @id @default(cuid())
+  toothRecordId String
+  tooth         ToothRecord @relation(fields: [toothRecordId], references: [id], onDelete: Cascade)
+
+  occurredAt DateTime @default(now())
+  eventType  String
+  // STATUS_CHANGED / DIAGNOSIS_ADDED / TREATMENT_PLANNED /
+  // TREATMENT_COMPLETED / IMAGING_TAKEN / PROCEDURE_PERFORMED / NOTE_ADDED
+
+  previousStatus String?
+  newStatus      String?
+  surface        String? // MESIAL / DISTAL / OCCLUSAL / BUCCAL / LINGUAL
+  notes          String?
+  procedureId    String?
+  performedById  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([toothRecordId, occurredAt])
 }
 
 model Allergy {
@@ -910,6 +981,142 @@ model Setting {
   value    String
 
   @@index([tenantId])
+}
+
+// =====================================================================
+// Dental treatment planning (bible §4.13)
+// =====================================================================
+
+/// A phased dental treatment plan. Tracks proposed → accepted →
+/// in-progress → completed. Each plan can be flat (items only) or
+/// phased (items grouped under phases for multi-visit work).
+model TreatmentPlan {
+  id        String  @id @default(cuid())
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  tenantId  String?
+
+  proposedById String // doctor user id
+  acceptedById String? // who at the clinic recorded acceptance
+
+  status String @default("DRAFT")
+  // DRAFT / PROPOSED / ACCEPTED / IN_PROGRESS / COMPLETED / CANCELLED
+
+  title     String?
+  diagnosis String?
+  rationale String?
+
+  priority String @default("MEDIUM")
+  // EMERGENCY / HIGH / MEDIUM / COSMETIC
+
+  proposedAt  DateTime?
+  presentedAt DateTime?
+  acceptedAt  DateTime?
+  completedAt DateTime?
+
+  patientSignatureUrl String?
+  consentRequired     Boolean @default(false)
+  consentSigned       Boolean @default(false)
+
+  totalCost                  Float @default(0)
+  estimatedInsuranceCoverage Float @default(0)
+  estimatedPatientPortion    Float @default(0)
+
+  notes     String?
+  invoiceId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  phases TreatmentPlanPhase[]
+  items  TreatmentPlanItem[]
+
+  @@index([patientId, status])
+  @@index([tenantId])
+}
+
+model TreatmentPlanPhase {
+  id             String        @id @default(cuid())
+  planId         String
+  plan           TreatmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  order          Int
+  title          String
+  description    String?
+  estimatedWeeks Int?
+  status         String        @default("PENDING") // PENDING / IN_PROGRESS / COMPLETED / SKIPPED
+
+  items TreatmentPlanItem[]
+
+  @@index([planId])
+}
+
+model TreatmentPlanItem {
+  id      String              @id @default(cuid())
+  planId  String?
+  plan    TreatmentPlan?      @relation(fields: [planId], references: [id], onDelete: Cascade)
+  phaseId String?
+  phase   TreatmentPlanPhase? @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+
+  treatmentId String? // loose FK to Treatment catalog
+  cdtCode     String?
+
+  fdi               Int?
+  surface           String? // MESIAL / DISTAL / OCCLUSAL / BUCCAL / LINGUAL
+  description       String
+  quantity          Int     @default(1)
+  unitPrice         Float
+  total             Float
+  insuranceCoverage Float   @default(0)
+  patientPortion    Float   @default(0)
+
+  procedureId String? // populated when performed
+  performedAt DateTime?
+
+  status String @default("PROPOSED")
+  // PROPOSED / ACCEPTED / IN_PROGRESS / COMPLETED / DECLINED
+
+  notes String?
+
+  @@index([planId])
+  @@index([phaseId])
+}
+
+// =====================================================================
+// Dental procedure templates (bible §3.5)
+// =====================================================================
+/// Pre-built procedure templates for common dental procedures.
+/// Pre-fill consultation + procedure flows with diagnosis, notes,
+/// post-op instructions, default Rx items, and follow-up cadence.
+
+model TreatmentTemplate {
+  id       String  @id @default(cuid())
+  tenantId String?
+
+  code     String  @unique // SCALE_POLISH / RCT_MOLAR / etc.
+  name     String
+  category String // Preventive / Restorative / Endodontic / etc.
+  cdtCode  String?
+
+  defaultDiagnosis          String?
+  defaultChiefComplaint     String?
+  defaultClinicalFindings   String?
+  defaultProcedureNotes     String?
+  defaultMaterialsUsed      String?
+  defaultPostOpInstructions String?
+  defaultFollowUpDays       Int?
+
+  /// Array of { medicineName, dosage, frequency, duration, instructions? }
+  defaultRxItems Json?
+
+  defaultPrice    Float @default(0)
+  defaultDuration Int   @default(30)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([category])
 }
 
 // =====================================================================
