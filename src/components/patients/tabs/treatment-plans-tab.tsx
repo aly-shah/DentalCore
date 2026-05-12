@@ -558,7 +558,7 @@ function CreatePlanDrawer({
   const handleClose = () => {
     setContentReady(false);
     setMounted(false);
-    setTimeout(onClose, 230);
+    setTimeout(onClose, 280);
   };
 
   useEffect(() => {
@@ -701,16 +701,11 @@ function CreatePlanDrawer({
         )}
       />
 
-      {/* Right drawer with spring-back entry */}
+      {/* Right drawer — pure horizontal slide */}
       <aside
         style={{
-          transform: mounted
-            ? "translateX(0) scale(1)"
-            : "translateX(100%) scale(0.97)",
-          transformOrigin: "right center",
-          transition: mounted
-            ? "transform 320ms cubic-bezier(0.34, 1.35, 0.64, 1), box-shadow 200ms ease-out"
-            : "transform 220ms cubic-bezier(0.7, 0, 0.84, 0), box-shadow 200ms ease-out",
+          transform: mounted ? "translateX(0)" : "translateX(100%)",
+          transition: "transform 280ms cubic-bezier(0.22, 1, 0.36, 1)",
           boxShadow: mounted
             ? "-30px 0 60px -20px rgba(15, 23, 42, 0.25), -10px 0 30px -10px rgba(15, 23, 42, 0.15)"
             : "none",
