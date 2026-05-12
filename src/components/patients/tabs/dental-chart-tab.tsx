@@ -2177,96 +2177,147 @@ function ToothPanel({
           {/* SURFACES TAB */}
           {tab === "surfaces" && (
             <>
-              {/* Mini-tooth surface picker */}
-              <section>
-                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-3 block">
-                  Tap a surface to edit it
-                </label>
+              {/* Mini-tooth surface picker — anatomical, category-specific */}
+              <section style={stagger(1)} className="flex flex-col items-center pb-1">
+                <div className="text-center mb-3">
+                  <div className="text-[10px] uppercase tracking-widest text-stone-400 font-bold">Occlusal View</div>
+                  <div className="text-[10px] text-stone-500 mt-0.5">Tap a surface to edit</div>
+                </div>
                 <SurfacePicker
                   cat={cat}
+                  arch={fdi >= 30 && fdi <= 48 || fdi >= 70 ? "lower" : "upper"}
                   surfaces={surfaces}
                   status={status}
                   active={activeSurface}
                   onSelect={(s) => setActiveSurface(s)}
                 />
+                {/* Surface chip strip below the diagram */}
+                <div className="flex gap-1.5 mt-4">
+                  {SURFACE_CHIPS.map((c) => {
+                    const has = surfaceHasData(c.key);
+                    const active = activeSurface === c.key;
+                    return (
+                      <button
+                        key={c.key}
+                        onClick={() => setActiveSurface(c.key)}
+                        className={cn(
+                          "group relative flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg transition-all",
+                          active && "bg-blue-50 ring-2 ring-blue-400 ring-offset-1 ring-offset-white scale-[1.04]"
+                        )}
+                        title={c.label}
+                      >
+                        <span className={cn(
+                          "w-7 h-7 rounded-lg flex items-center justify-center text-[11px] font-bold transition-all",
+                          active ? "bg-blue-600 text-white shadow-md"
+                          : has ? "bg-stone-800 text-white"
+                          : "bg-stone-100 text-stone-500 group-hover:bg-stone-200"
+                        )}>
+                          {c.short}
+                        </span>
+                        <span className={cn(
+                          "text-[8px] font-semibold uppercase tracking-wider transition-colors",
+                          active ? "text-blue-700"
+                          : has ? "text-stone-700"
+                          : "text-stone-400"
+                        )}>
+                          {c.label.replace(/\s*\(.*\)/, "")}
+                        </span>
+                        {has && !active && (
+                          <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-blue-500 ring-2 ring-white" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               </section>
 
-              {/* Surface editor */}
+              {/* Surface editor — appears when a surface is selected */}
               {activeSurface && (
-                <section className="rounded-xl border-2 border-blue-200 bg-blue-50/30 p-4 space-y-3">
+                <section
+                  style={stagger(2)}
+                  className="rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-blue-50/60 to-cyan-50/30 p-4 space-y-3"
+                >
                   <div className="flex items-center justify-between">
                     <h3 className="text-sm font-bold text-stone-900 flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-md bg-blue-500 text-white flex items-center justify-center text-[10px] font-bold">
+                      <span className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center text-[11px] font-bold shadow-md">
                         {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.short}
                       </span>
-                      {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.label}
+                      <span className="leading-tight">
+                        {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.label}
+                        <span className="block text-[10px] font-medium text-stone-500">surface · tooth #{fdi}</span>
+                      </span>
                     </h3>
                     {surfaceHasData(activeSurface) && (
                       <button
-                        onClick={() => setSurfaces((prev) => ({ ...prev, [activeSurface]: undefined }))}
-                        className="text-[10px] text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
+                        onClick={() => setSurfaces((prev) => {
+                          const next = { ...prev };
+                          delete next[activeSurface];
+                          return next;
+                        })}
+                        className="text-[10px] text-red-500 hover:text-red-700 font-semibold flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded-md transition-colors"
                       >
                         <Trash2 className="w-3 h-3" /> Clear
                       </button>
                     )}
                   </div>
-                  <div className="space-y-2">
-                    <input
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white focus:border-blue-400 focus:outline-none"
-                      placeholder="Condition (e.g. Caries)"
-                      value={surfaces[activeSurface]?.condition ?? ""}
-                      onChange={(e) => updateSurface(activeSurface, "condition", e.target.value)}
-                    />
-                    <input
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-cyan-200 bg-cyan-50/30 focus:border-cyan-400 focus:outline-none"
-                      placeholder="Planned treatment"
-                      value={surfaces[activeSurface]?.plannedTreatment ?? ""}
-                      onChange={(e) => updateSurface(activeSurface, "plannedTreatment", e.target.value)}
-                    />
-                    <input
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-emerald-200 bg-emerald-50/30 focus:border-emerald-400 focus:outline-none"
-                      placeholder="Completed treatment"
-                      value={surfaces[activeSurface]?.completedTreatment ?? ""}
-                      onChange={(e) => updateSurface(activeSurface, "completedTreatment", e.target.value)}
-                    />
-                    <input
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-stone-200 bg-white focus:border-blue-400 focus:outline-none"
-                      placeholder="Notes"
+
+                  {/* Chip-based inputs */}
+                  <ChipField
+                    label="Condition"
+                    accentClass="rose"
+                    values={parseChips(surfaces[activeSurface]?.condition ?? "")}
+                    onChange={(chips) => updateSurface(activeSurface, "condition", joinChips(chips))}
+                    suggestions={CONDITION_CHIPS}
+                    placeholder="Cavity, Sensitivity…"
+                  />
+
+                  <ChipField
+                    label="Planned"
+                    accentClass="cyan"
+                    values={parseChips(surfaces[activeSurface]?.plannedTreatment ?? "")}
+                    onChange={(chips) => updateSurface(activeSurface, "plannedTreatment", joinChips(chips))}
+                    suggestions={TREATMENT_CHIPS.slice(0, 10)}
+                    placeholder="Procedure to plan…"
+                  />
+
+                  <ChipField
+                    label="Completed"
+                    accentClass="emerald"
+                    values={parseChips(surfaces[activeSurface]?.completedTreatment ?? "")}
+                    onChange={(chips) => updateSurface(activeSurface, "completedTreatment", joinChips(chips))}
+                    suggestions={TREATMENT_CHIPS.slice(0, 8)}
+                    placeholder="Finished procedure…"
+                  />
+
+                  <div>
+                    <label className="text-xs font-bold uppercase tracking-wider text-stone-600 mb-1.5 block">
+                      Notes
+                    </label>
+                    <textarea
+                      rows={2}
+                      placeholder="Optional notes for this surface…"
                       value={surfaces[activeSurface]?.notes ?? ""}
                       onChange={(e) => updateSurface(activeSurface, "notes", e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border-2 border-stone-200 focus:border-blue-400 focus:outline-none bg-white placeholder:text-stone-400 resize-none"
                     />
                   </div>
                 </section>
               )}
 
-              {/* Surface chip list (alternative view) */}
-              <div className="flex flex-wrap gap-1.5">
-                {SURFACE_CHIPS.map((c) => {
-                  const has = surfaceHasData(c.key);
-                  const active = activeSurface === c.key;
-                  return (
-                    <button
-                      key={c.key}
-                      onClick={() => setActiveSurface(c.key)}
-                      className={cn(
-                        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all",
-                        active ? "border-blue-500 bg-blue-50 text-blue-700"
-                        : has ? "border-stone-300 bg-stone-50 text-stone-700"
-                        : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
-                      )}
-                    >
-                      <span className={cn(
-                        "w-4 h-4 rounded-md flex items-center justify-center text-[9px] font-bold",
-                        active ? "bg-blue-500 text-white" : has ? "bg-stone-300 text-white" : "bg-stone-100 text-stone-500"
-                      )}>
-                        {c.short}
-                      </span>
-                      {c.label}
-                      {has && <span className="w-1 h-1 rounded-full bg-blue-500" />}
-                    </button>
-                  );
-                })}
-              </div>
+              {!activeSurface && (
+                <div
+                  style={stagger(2)}
+                  className="rounded-2xl border-2 border-dashed border-stone-200 p-6 text-center"
+                >
+                  <Layers className="w-8 h-8 text-stone-300 mx-auto mb-2" />
+                  <p className="text-xs text-stone-500 font-medium">
+                    Pick a surface above to mark its condition
+                  </p>
+                  <p className="text-[10px] text-stone-400 mt-1">
+                    M · Mesial   D · Distal   O · Occlusal   B · Buccal   L · Lingual
+                  </p>
+                </div>
+              )}
             </>
           )}
 
@@ -2527,20 +2578,27 @@ function MiniToothIcon({ cat, status }: { cat: ToothCategory; status: ToothStatu
 }
 
 /**
- * Visual surface picker — mini tooth diagram in the Surfaces tab.
- * Click a surface to focus the editor below.
+ * Visual surface picker — refined mini-tooth diagram for the Surfaces tab.
+ *
+ * Renders the chewing surface of the tooth viewed from the occlusal
+ * direction, with the 5 clinical surfaces (M / D / O / B / L) arranged
+ * around the centre.  Category-specific anatomical detail:
+ *  - Incisor / canine: leaf-shaped outline, simple cross
+ *  - Premolar:   "+" pit pattern + 2 visible cusps
+ *  - Molar:      4-cusp grid with developmental grooves
  */
 function SurfacePicker({
-  cat, surfaces, status, active, onSelect,
+  cat, arch, surfaces, status, active, onSelect,
 }: {
   cat: ToothCategory;
+  arch: "upper" | "lower";
   surfaces: Partial<Record<Surface, SurfaceData>>;
   status: ToothStatus;
   active: Surface | null;
   onSelect: (s: Surface) => void;
 }) {
-  const w = 180;
-  const h = 180;
+  const w = 200;
+  const h = 200;
   const cw = w / 3;
   const ch = h / 3;
   const surfaceFor = (s: Surface) => {
@@ -2555,18 +2613,83 @@ function SurfacePicker({
     { s: "occlusal", x: cw,     y: ch,       w: cw, h: ch, label: "O" },
   ];
   return (
-    <div className="flex justify-center">
-      <svg viewBox={`-10 -10 ${w + 20} ${h + 20}`} width="200" height="200" className="select-none">
-        {/* Outer tooth outline */}
-        {cat === "incisor" || cat === "canine" ? (
-          <path
-            d={`M ${w / 2} 0 Q ${w + 8} 4 ${w} ${h * 0.45} Q ${w} ${h} ${w / 2} ${h} Q 0 ${h} 0 ${h * 0.45} Q -8 4 ${w / 2} 0 Z`}
-            fill="#fafafa"
-            stroke="#cbd5e1"
-            strokeWidth="2"
-          />
-        ) : (
-          <rect x={0} y={0} width={w} height={h} rx={cat === "premolar" ? 16 : 12} fill="#fafafa" stroke="#cbd5e1" strokeWidth="2" />
+    <div className="relative">
+      {/* Subtle backdrop ring */}
+      <div className="absolute inset-0 rounded-full bg-gradient-to-br from-stone-50 to-stone-100/60 blur-2xl scale-110 pointer-events-none" />
+
+      <svg viewBox={`-12 -12 ${w + 24} ${h + 24}`} width="220" height="220" className="relative select-none">
+        <defs>
+          {/* Soft pearl base for the whole tooth */}
+          <radialGradient id="sp-pearl" cx="35%" cy="30%" r="80%">
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="60%" stopColor="#faf7f1" />
+            <stop offset="100%" stopColor="#ece6d8" />
+          </radialGradient>
+          {/* Sophisticated drop shadow for the tooth outline */}
+          <filter id="sp-shadow" x="-25%" y="-25%" width="150%" height="150%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3" />
+            <feOffset dx="0" dy="2" result="shadow" />
+            <feComponentTransfer><feFuncA type="linear" slope="0.25" /></feComponentTransfer>
+            <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+          {/* Glow for active cell */}
+          <filter id="sp-cell-glow" x="-25%" y="-25%" width="150%" height="150%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="2.5" />
+            <feFlood floodColor="#3b82f6" floodOpacity="0.35" result="color" />
+            <feComposite in="color" in2="SourceAlpha" operator="in" result="shadow" />
+            <feMerge><feMergeNode in="shadow" /><feMergeNode in="SourceGraphic" /></feMerge>
+          </filter>
+        </defs>
+
+        {/* Outer tooth outline — category-specific */}
+        <g filter="url(#sp-shadow)">
+          {cat === "incisor" || cat === "canine" ? (
+            <path
+              d={`M ${w / 2} 0 Q ${w + 10} 6 ${w} ${h * 0.45} Q ${w} ${h - 6} ${w / 2} ${h} Q 0 ${h - 6} 0 ${h * 0.45} Q -10 6 ${w / 2} 0 Z`}
+              fill="url(#sp-pearl)"
+              stroke="#a8a29e"
+              strokeWidth="2"
+            />
+          ) : (
+            <rect x={0} y={0} width={w} height={h} rx={cat === "premolar" ? 24 : 18} fill="url(#sp-pearl)" stroke="#a8a29e" strokeWidth="2" />
+          )}
+        </g>
+
+        {/* Anatomical detail — drawn behind the surface cells */}
+        {cat === "premolar" && (
+          <g pointerEvents="none" opacity={0.4}>
+            <line x1={w / 2} y1={h * 0.32} x2={w / 2} y2={h * 0.68} stroke="#a8a29e" strokeWidth="1.2" />
+            <line x1={w * 0.32} y1={h / 2} x2={w * 0.68} y2={h / 2} stroke="#a8a29e" strokeWidth="1.2" />
+            <circle cx={w / 2} cy={h / 2} r={3} fill="#a8a29e" opacity={0.5} />
+          </g>
+        )}
+        {cat === "molar" && (
+          <g pointerEvents="none" opacity={0.4}>
+            {arch === "upper" ? (
+              <>
+                <path d={`M ${w / 2} ${h * 0.5} L ${w * 0.28} ${h * 0.2}`} stroke="#a8a29e" strokeWidth="1.2" fill="none" />
+                <path d={`M ${w / 2} ${h * 0.5} L ${w * 0.72} ${h * 0.2}`} stroke="#a8a29e" strokeWidth="1.2" fill="none" />
+                <path d={`M ${w / 2} ${h * 0.5} L ${w / 2} ${h * 0.85}`} stroke="#a8a29e" strokeWidth="1.2" fill="none" />
+              </>
+            ) : (
+              <>
+                <line x1={w / 2} y1={h * 0.18} x2={w / 2} y2={h * 0.82} stroke="#a8a29e" strokeWidth="1.2" />
+                <line x1={w * 0.18} y1={h / 2} x2={w * 0.82} y2={h / 2} stroke="#a8a29e" strokeWidth="1.2" />
+              </>
+            )}
+            {/* Cusp dots */}
+            <g fill="#a8a29e" opacity={0.5}>
+              <circle cx={w * 0.28} cy={h * 0.3} r={3.5} />
+              <circle cx={w * 0.72} cy={h * 0.3} r={3.5} />
+              <circle cx={w * 0.28} cy={h * 0.7} r={3.5} />
+              <circle cx={w * 0.72} cy={h * 0.7} r={3.5} />
+            </g>
+          </g>
+        )}
+        {(cat === "incisor" || cat === "canine") && (
+          <g pointerEvents="none" opacity={0.35}>
+            <path d={`M ${w * 0.2} ${h * 0.82} Q ${w / 2} ${h - 4} ${w * 0.8} ${h * 0.82}`} stroke="#a8a29e" strokeWidth="1.2" fill="none" />
+          </g>
         )}
 
         {/* Surface cells */}
@@ -2578,40 +2701,61 @@ function SurfacePicker({
           return (
             <g key={s} onClick={() => onSelect(s)} style={{ cursor: "pointer" }}>
               <rect
-                x={x + 4}
-                y={y + 4}
-                width={cellW - 8}
-                height={cellH - 8}
-                rx={6}
-                fill={hasData ? fill : isActive ? "#dbeafe" : "white"}
-                stroke={isActive ? "#3b82f6" : hasData ? stroke : "#e2e8f0"}
-                strokeWidth={isActive ? 2.5 : 1.5}
-                opacity={hasData ? 0.95 : 1}
-                style={{ transition: "all 0.15s ease" }}
+                x={x + 5}
+                y={y + 5}
+                width={cellW - 10}
+                height={cellH - 10}
+                rx={8}
+                fill={hasData ? fill : isActive ? "#dbeafe" : "rgba(255,255,255,0.55)"}
+                stroke={isActive ? "#2563eb" : hasData ? stroke : "rgba(168,162,158,0.4)"}
+                strokeWidth={isActive ? 2.5 : hasData ? 1.5 : 1}
+                opacity={hasData ? 0.92 : 1}
+                filter={isActive ? "url(#sp-cell-glow)" : undefined}
+                style={{ transition: "all 0.18s cubic-bezier(0.16, 1, 0.3, 1)" }}
               />
               <text
                 x={x + cellW / 2}
-                y={y + cellH / 2 + 5}
+                y={y + cellH / 2 + 6}
                 textAnchor="middle"
-                fontSize={hasData || isActive ? 18 : 16}
+                fontSize={isActive ? 20 : hasData ? 18 : 17}
                 fontWeight={800}
-                fill={hasData ? "#1e293b" : isActive ? "#1d4ed8" : "#cbd5e1"}
+                fill={hasData ? "#0f172a" : isActive ? "#1d4ed8" : "#a8a29e"}
                 pointerEvents="none"
+                style={{ transition: "all 0.18s ease" }}
               >
                 {label}
               </text>
               {hasData && (
                 <circle
-                  cx={x + cellW - 8}
-                  cy={y + 8}
-                  r={3}
+                  cx={x + cellW - 10}
+                  cy={y + 10}
+                  r={3.5}
                   fill="#3b82f6"
+                  stroke="white"
+                  strokeWidth="1.5"
                   pointerEvents="none"
                 />
               )}
             </g>
           );
         })}
+
+        {/* Inner glow on hover/active for the central occlusal cell */}
+        {active === "occlusal" && (
+          <rect
+            x={cw + 5}
+            y={ch + 5}
+            width={cw - 10}
+            height={ch - 10}
+            rx={8}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth={2.5}
+            strokeDasharray="3 4"
+            opacity={0.6}
+            pointerEvents="none"
+          />
+        )}
       </svg>
     </div>
   );
