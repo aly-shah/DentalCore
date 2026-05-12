@@ -1472,9 +1472,6 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
   function Tooth({ fdi, arch }: { fdi: number; arch: "upper" | "lower" }) {
     const t = teethByFdi[fdi];
-    // Use derived effective status so Classic view tints teeth with
-    // conditions / surfaces / planned-completed treatments, even when
-    // the explicit status field is still HEALTHY.
     const status = effectiveStatus(t);
     return (
       <ToothSVG
@@ -1485,10 +1482,15 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
         selected={selectedFdi === fdi}
         label={fdiToDisplay(fdi)}
         onClickTooth={() => {
+          if (applyFromFdi !== null && applyFromFdi !== fdi && applyFromData) {
+            applyMutation.mutate({ toFdi: fdi });
+            return;
+          }
           setInitialSurface(null);
           setSelectedFdi(fdi);
         }}
         onClickSurface={(surface) => {
+          if (applyFromFdi !== null) return;
           setInitialSurface(surface);
           setSelectedFdi(fdi);
         }}
@@ -1577,6 +1579,33 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
         </div>
       )}
 
+      {/* Apply-to-other-teeth banner — sticky at top of the chart area
+          so it's always visible while in copy mode (both Arch + Classic views). */}
+      {applyFromFdi !== null && (
+        <div className="sticky top-2 z-20 rounded-xl border-2 border-violet-400 bg-gradient-to-r from-violet-100 to-fuchsia-100 px-3 py-2.5 flex items-center gap-3 shadow-lg animate-fade-in">
+          <div className="w-9 h-9 rounded-lg bg-violet-600 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-md">
+            #{applyFromFdi}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-bold text-violet-900 leading-tight flex items-center gap-1.5">
+              <span className="inline-block w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
+              Copy mode active — source tooth #{applyFromFdi}
+            </p>
+            <p className="text-[10px] text-violet-700 leading-tight mt-0.5">
+              {appliedCount > 0
+                ? `Applied to ${appliedCount} other tooth${appliedCount === 1 ? "" : "es"}. Click more teeth to keep painting.`
+                : "Click any tooth to paste its status, conditions, surfaces & treatments."}
+            </p>
+          </div>
+          <button
+            onClick={() => { setApplyFromFdi(null); setApplyFromData(null); setAppliedCount(0); }}
+            className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-white text-violet-700 hover:bg-violet-50 border border-violet-300 transition-colors shrink-0 shadow-sm"
+          >
+            Done
+          </button>
+        </div>
+      )}
+
       {!isLoading && chartRes?.chart && viewMode === "ARCH" && (
         <>
           {/* Quick-mark toolbar */}
@@ -1615,31 +1644,6 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
             <div className="text-[10px] text-stone-500 -mt-2 px-1">
               <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse mr-1.5" />
               Click any tooth to mark it as <strong>{STATUS_STYLES[quickMark].label}</strong> · surface clicks disabled while marking
-            </div>
-          )}
-
-          {/* Apply-to-other-teeth banner */}
-          {applyFromFdi !== null && (
-            <div className="rounded-xl border-2 border-violet-300 bg-gradient-to-r from-violet-50 to-fuchsia-50 px-3 py-2 flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-violet-500 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                #{applyFromFdi}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-[11px] font-bold text-violet-900 leading-tight">
-                  Copying tooth #{applyFromFdi}
-                </p>
-                <p className="text-[10px] text-violet-600 leading-tight">
-                  {appliedCount > 0
-                    ? `Applied to ${appliedCount} other tooth${appliedCount === 1 ? "" : "es"}. Click more to keep going.`
-                    : "Click any tooth to paste status, conditions, surfaces, planned & completed treatments."}
-                </p>
-              </div>
-              <button
-                onClick={() => { setApplyFromFdi(null); setApplyFromData(null); setAppliedCount(0); }}
-                className="px-3 py-1.5 rounded-lg text-[11px] font-bold bg-white text-violet-700 hover:bg-violet-100 border border-violet-200 transition-colors shrink-0"
-              >
-                Done
-              </button>
             </div>
           )}
 
