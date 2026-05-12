@@ -598,6 +598,382 @@ function OcclusalView({ cat, w, h, status, surfaces, mOnRight, arch, onClickSurf
   );
 }
 
+// ───────── modern U-shaped arch view ─────────
+
+const ARCH_FDI_ORDER: { upper: number[]; lower: number[] } = {
+  // viewer-left → viewer-right = patient-right → patient-left
+  upper: [18, 17, 16, 15, 14, 13, 12, 11, 21, 22, 23, 24, 25, 26, 27, 28],
+  lower: [48, 47, 46, 45, 44, 43, 42, 41, 31, 32, 33, 34, 35, 36, 37, 38],
+};
+const ARCH_FDI_PRIMARY = {
+  upper: [55, 54, 53, 52, 51, 61, 62, 63, 64, 65],
+  lower: [85, 84, 83, 82, 81, 71, 72, 73, 74, 75],
+};
+
+interface ArchViewProps {
+  dentition: "ADULT" | "MIXED" | "PEDIATRIC";
+  teethByFdi: Record<number, ToothRecord>;
+  selectedFdi: number | null;
+  numbering: "FDI" | "UNIVERSAL";
+  onClickTooth: (fdi: number) => void;
+  onClickSurface: (fdi: number, s: Surface) => void;
+}
+
+function ArchView({ dentition, teethByFdi, selectedFdi, numbering, onClickTooth, onClickSurface }: ArchViewProps) {
+  // viewBox set up so the arches fill nicely on desktop and mobile.
+  const VB_W = 600;
+  const VB_H = 480;
+
+  // Maxillary ellipse (top half visible).
+  const maxCx = 300, maxCy = 200, maxRx = 240, maxRy = 165;
+  // Mandibular ellipse (bottom half visible).
+  const manCx = 300, manCy = 270, manRx = 240, manRy = 165;
+
+  const upperFdis = dentition === "PEDIATRIC" ? ARCH_FDI_PRIMARY.upper
+                  : dentition === "MIXED" ? ARCH_FDI_ORDER.upper // adult full row; primary inset separately
+                  : ARCH_FDI_ORDER.upper;
+  const lowerFdis = dentition === "PEDIATRIC" ? ARCH_FDI_PRIMARY.lower
+                  : ARCH_FDI_ORDER.lower;
+
+  /**
+   * Position + rotation for tooth at index i in an arch with N teeth.
+   * Uses degrees (SVG convention — clockwise from east).
+   */
+  function positionOnArch(i: number, n: number, archType: "max" | "man") {
+    // Inset slightly from the equator (the leftmost/rightmost points) so
+    // wisdoms don't overlap between arches.
+    const inset = 8; // degrees
+    let startDeg: number, endDeg: number;
+    if (archType === "max") {
+      // Maxillary: leftmost (180°) → top apex (270°) → rightmost (360°/0°)
+      startDeg = 180 + inset;
+      endDeg = 360 - inset;
+    } else {
+      // Mandibular: leftmost (180°) → bottom apex (90°) → rightmost (0°)
+      startDeg = 180 - inset;
+      endDeg = 0 + inset;
+    }
+    const t = n === 1 ? 0.5 : i / (n - 1);
+    const deg = startDeg + t * (endDeg - startDeg);
+    const rad = (deg * Math.PI) / 180;
+    const cx = archType === "max" ? maxCx : manCx;
+    const cy = archType === "max" ? maxCy : manCy;
+    const rx = archType === "max" ? maxRx : manRx;
+    const ry = archType === "max" ? maxRy : manRy;
+    const x = cx + rx * Math.cos(rad);
+    const y = cy + ry * Math.sin(rad);
+    // Rotate so tooth's local "outward" (north / -y) points along radial direction
+    const rotation = deg + 90; // see notes
+    return { x, y, rotation };
+  }
+
+  // Build the maxillary midline guide (a curve following the ellipse top)
+  const archGuide = (cx: number, cy: number, rx: number, ry: number, top: boolean) => {
+    const start = `M ${cx - rx} ${cy}`;
+    const end = `${cx + rx} ${cy}`;
+    return `${start} A ${rx} ${ry} 0 0 ${top ? 1 : 0} ${end}`;
+  };
+
+  return (
+    <svg
+      viewBox={`0 0 ${VB_W} ${VB_H}`}
+      className="w-full max-w-[640px] mx-auto"
+      style={{ filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.04))" }}
+    >
+      <defs>
+        <linearGradient id="arch-bg" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#fafafa" />
+          <stop offset="100%" stopColor="#f5f5f4" />
+        </linearGradient>
+      </defs>
+
+      {/* Background plate */}
+      <rect x={0} y={0} width={VB_W} height={VB_H} fill="url(#arch-bg)" rx={12} />
+
+      {/* Arch guides (faint dashed) */}
+      <path d={archGuide(maxCx, maxCy, maxRx, maxRy, false)} fill="none" stroke="#d6d3d1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+      <path d={archGuide(manCx, manCy, manRx, manRy, true)} fill="none" stroke="#d6d3d1" strokeWidth={1} strokeDasharray="2 3" opacity={0.6} />
+
+      {/* Midline */}
+      <line x1={VB_W / 2} y1={20} x2={VB_W / 2} y2={VB_H - 20} stroke="#d6d3d1" strokeWidth={0.6} strokeDasharray="3 4" opacity={0.5} />
+
+      {/* Axis labels */}
+      <text x={VB_W / 2} y={14} fontSize={11} fontWeight={700} textAnchor="middle" fill="#a8a29e" letterSpacing="3">UPPER</text>
+      <text x={VB_W / 2} y={VB_H - 6} fontSize={11} fontWeight={700} textAnchor="middle" fill="#a8a29e" letterSpacing="3">LOWER</text>
+      <text x={18} y={VB_H / 2 + 4} fontSize={11} fontWeight={700} textAnchor="start" fill="#a8a29e" letterSpacing="3">RIGHT</text>
+      <text x={VB_W - 18} y={VB_H / 2 + 4} fontSize={11} fontWeight={700} textAnchor="end" fill="#a8a29e" letterSpacing="3">LEFT</text>
+
+      {/* Maxillary teeth */}
+      {upperFdis.map((fdi, i) => {
+        const { x, y, rotation } = positionOnArch(i, upperFdis.length, "max");
+        return (
+          <ArchTooth
+            key={fdi}
+            fdi={fdi}
+            x={x}
+            y={y}
+            rotation={rotation}
+            tooth={teethByFdi[fdi]}
+            selected={selectedFdi === fdi}
+            label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
+            arch="upper"
+            onClickTooth={() => onClickTooth(fdi)}
+            onClickSurface={(s) => onClickSurface(fdi, s)}
+          />
+        );
+      })}
+
+      {/* Mandibular teeth */}
+      {lowerFdis.map((fdi, i) => {
+        const { x, y, rotation } = positionOnArch(i, lowerFdis.length, "man");
+        return (
+          <ArchTooth
+            key={fdi}
+            fdi={fdi}
+            x={x}
+            y={y}
+            rotation={rotation}
+            tooth={teethByFdi[fdi]}
+            selected={selectedFdi === fdi}
+            label={numbering === "FDI" ? String(fdi) : (UNIVERSAL_MAP[fdi] ?? String(fdi))}
+            arch="lower"
+            onClickTooth={() => onClickTooth(fdi)}
+            onClickSurface={(s) => onClickSurface(fdi, s)}
+          />
+        );
+      })}
+
+      {/* Centre arch labels */}
+      <text x={VB_W / 2} y={maxCy + 6} fontSize={9} fontWeight={600} textAnchor="middle" fill="#a8a29e" letterSpacing="1">MAXILLARY</text>
+      <text x={VB_W / 2} y={manCy - 4} fontSize={9} fontWeight={600} textAnchor="middle" fill="#a8a29e" letterSpacing="1">MANDIBULAR</text>
+    </svg>
+  );
+}
+
+interface ArchToothProps {
+  fdi: number;
+  x: number;
+  y: number;
+  rotation: number;
+  tooth?: ToothRecord;
+  selected: boolean;
+  label: string;
+  arch: "upper" | "lower";
+  onClickTooth: () => void;
+  onClickSurface: (s: Surface) => void;
+}
+
+/**
+ * Single tooth in the modern U-shaped arch. Rendered at the arch
+ * position with category-specific anatomical detail. The 5 surfaces
+ * (M/D/O/B/L) are clickable directly on the occlusal face.
+ */
+function ArchTooth({ fdi, x, y, rotation, tooth, selected, label, arch, onClickTooth, onClickSurface }: ArchToothProps) {
+  const cat = toothCategory(fdi);
+  const status = (tooth?.status ?? "HEALTHY") as ToothStatus;
+  const missing = status === "MISSING";
+
+  // Per-category dimensions for the occlusal face.
+  // Width grows with tooth size; height stays roughly constant in the arch view.
+  const w = cat === "incisor" ? 18 : cat === "canine" ? 20 : cat === "premolar" ? 24 : 30;
+  const h = cat === "incisor" ? 22 : cat === "canine" ? 24 : cat === "premolar" ? 22 : 28;
+
+  // Mesial / distal: M is always toward the centre of the mouth (midline).
+  const quadrant = Math.floor(fdi / 10);
+  const mOnRight = quadrant === 1 || quadrant === 4 || quadrant === 5 || quadrant === 8;
+  // In the arch view, the tooth is rotated so the "outward" direction
+  // points away from the arch centre. Buccal (cheek side) = outward = top
+  // of the rotated tooth. Lingual = bottom (toward arch centre).
+  // M / D are the left/right sides of the local frame. For Q1+Q4 (right
+  // side of the mouth, viewer's left half of the chart) M is on the inner
+  // edge — which after rotation lands on the side closer to the midline.
+
+  // Surface fills
+  const fillFor = (s: Surface) => surfaceFill(status, tooth?.surfaces?.[s]);
+
+  // 5-region geometry (within the occlusal rect/oval, local frame):
+  //   Top middle    = Buccal
+  //   Bottom middle = Lingual
+  //   Left middle   = mesial OR distal depending on quadrant
+  //   Right middle  = the other one
+  //   Center        = Occlusal
+  const cellW = w / 3;
+  const cellH = h / 3;
+  const buccalRect    = { x: cellW, y: 0,         w: cellW, h: cellH };
+  const lingualRect   = { x: cellW, y: 2 * cellH, w: cellW, h: cellH };
+  const centerRect    = { x: cellW, y: cellH,     w: cellW, h: cellH };
+  const leftRect      = { x: 0,     y: cellH,     w: cellW, h: cellH };
+  const rightRect     = { x: 2*cellW, y: cellH,   w: cellW, h: cellH };
+  const mesialRect    = mOnRight ? rightRect : leftRect;
+  const distalRect    = mOnRight ? leftRect : rightRect;
+
+  // Tooth outline shape based on category.
+  const outline = (() => {
+    if (cat === "incisor" || cat === "canine") {
+      const cusp = cat === "canine" ? 4 : 0;
+      // Rounded leaf shape (pointier for canines)
+      return (
+        <path
+          d={`M ${w / 2} 0
+              Q ${w} 0 ${w} ${h / 2 + cusp / 2}
+              Q ${w} ${h} ${w / 2} ${h - cusp}
+              L ${w / 2} ${h - cusp}
+              Q 0 ${h} 0 ${h / 2 + cusp / 2}
+              Q 0 0 ${w / 2} 0 Z`}
+          fill="white"
+          stroke="#475569"
+          strokeWidth={1}
+        />
+      );
+    }
+    // Premolar / molar — rounded square
+    return (
+      <rect
+        x={0}
+        y={0}
+        width={w}
+        height={h}
+        rx={cat === "premolar" ? 5 : 4}
+        fill="white"
+        stroke="#475569"
+        strokeWidth={1}
+      />
+    );
+  })();
+
+  const ringR = Math.max(w, h) / 2 + 6;
+
+  return (
+    <g transform={`translate(${x}, ${y}) rotate(${rotation})`}>
+      <g
+        transform={`translate(${-w / 2}, ${-h / 2})`}
+        onClick={(e) => { e.stopPropagation(); onClickTooth(); }}
+        style={{ cursor: "pointer" }}
+      >
+        {/* Tooltip on hover */}
+        <title>{`Tooth ${label} (FDI ${fdi}) · ${cat} · ${STATUS_STYLES[status].label}`}</title>
+
+        {/* Selection ring (drawn behind tooth) */}
+        {selected && (
+          <circle cx={w / 2} cy={h / 2} r={ringR} fill="#3b82f6" opacity={0.12} />
+        )}
+
+        {/* Tooth outline */}
+        {outline}
+
+        {/* Anatomical hints */}
+        {cat === "premolar" && (
+          <g stroke="#cbd5e1" strokeWidth={0.6} opacity={0.9} pointerEvents="none">
+            <line x1={w / 2} y1={h * 0.3} x2={w / 2} y2={h * 0.7} />
+            <line x1={w * 0.3} y1={h / 2} x2={w * 0.7} y2={h / 2} />
+          </g>
+        )}
+        {cat === "molar" && (
+          <g stroke="#cbd5e1" strokeWidth={0.6} opacity={0.9} pointerEvents="none">
+            <line x1={w / 2} y1={2} x2={w / 2} y2={h - 2} />
+            <line x1={2} y1={h / 2} x2={w - 2} y2={h / 2} />
+            {/* Subtle cusp arcs */}
+            <circle cx={w * 0.27} cy={h * 0.3} r={2} fill="none" />
+            <circle cx={w * 0.73} cy={h * 0.3} r={2} fill="none" />
+            <circle cx={w * 0.27} cy={h * 0.7} r={2} fill="none" />
+            <circle cx={w * 0.73} cy={h * 0.7} r={2} fill="none" />
+          </g>
+        )}
+
+        {/* Surface fills — paint only where there's data or whole-tooth status */}
+        {!missing && (
+          <g>
+            {([
+              ["buccal", buccalRect],
+              ["lingual", lingualRect],
+              ["mesial", mesialRect],
+              ["distal", distalRect],
+              ["occlusal", centerRect],
+            ] as const).map(([s, r]) => {
+              const hasData = !!(tooth?.surfaces?.[s]?.condition || tooth?.surfaces?.[s]?.completedTreatment || tooth?.surfaces?.[s]?.plannedTreatment);
+              if (!hasData && status === "HEALTHY") return null;
+              const { fill, stroke } = fillFor(s as Surface);
+              return (
+                <rect
+                  key={s}
+                  x={r.x + 1}
+                  y={r.y + 1}
+                  width={r.w - 2}
+                  height={r.h - 2}
+                  rx={1.2}
+                  fill={fill}
+                  stroke={stroke}
+                  strokeWidth={0.5}
+                  opacity={0.9}
+                  pointerEvents="none"
+                />
+              );
+            })}
+          </g>
+        )}
+
+        {/* Clickable surface zones (invisible) */}
+        {!missing && ([
+          ["buccal", buccalRect],
+          ["lingual", lingualRect],
+          ["mesial", mesialRect],
+          ["distal", distalRect],
+          ["occlusal", centerRect],
+        ] as const).map(([s, r]) => (
+          <rect
+            key={`zone-${s}`}
+            x={r.x}
+            y={r.y}
+            width={r.w}
+            height={r.h}
+            fill="transparent"
+            style={{ cursor: "pointer" }}
+            onClick={(e) => { e.stopPropagation(); onClickSurface(s as Surface); }}
+          >
+            <title>{s} surface</title>
+          </rect>
+        ))}
+
+        {/* Missing X */}
+        {missing && (
+          <g stroke="#78716c" strokeWidth={1.4} strokeLinecap="round" opacity={0.6}>
+            <line x1={3} y1={3} x2={w - 3} y2={h - 3} />
+            <line x1={w - 3} y1={3} x2={3} y2={h - 3} />
+          </g>
+        )}
+
+        {/* Selection highlight */}
+        {selected && (
+          <rect
+            x={-2}
+            y={-2}
+            width={w + 4}
+            height={h + 4}
+            rx={5}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth={1.2}
+          />
+        )}
+      </g>
+
+      {/* FDI label — counter-rotate so the number stays upright */}
+      <g transform={`rotate(${-rotation})`} pointerEvents="none">
+        <text
+          x={0}
+          y={arch === "upper" ? -h / 2 - 7 : h / 2 + 14}
+          textAnchor="middle"
+          fontSize={9}
+          fontWeight={700}
+          fill="#475569"
+        >
+          {label}
+        </text>
+      </g>
+    </g>
+  );
+}
+
 // ───────── component ─────────
 
 export default function DentalChartTabDefault(props: { patientId: string; onExit?: () => void }) {
@@ -612,6 +988,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
   const qc = useQueryClient();
   const [numbering, setNumbering] = useState<"FDI" | "UNIVERSAL">("FDI");
   const [dentition, setDentition] = useState<"ADULT" | "MIXED" | "PEDIATRIC">("ADULT");
+  const [viewMode, setViewMode] = useState<"ARCH" | "CLASSIC">("ARCH");
   const [selectedFdi, setSelectedFdi] = useState<number | null>(null);
   const [showHistory, setShowHistory] = useState(false);
 
@@ -712,6 +1089,15 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           <h2 className="text-base font-semibold text-stone-900">Dental Chart</h2>
         </div>
         <div className="flex items-center gap-1.5 flex-wrap">
+          {/* View mode */}
+          <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
+            {(["ARCH", "CLASSIC"] as const).map((v) => (
+              <button key={v} onClick={() => setViewMode(v)} className={cn(
+                "px-2.5 py-1 rounded-md text-[10px] font-semibold transition-all",
+                viewMode === v ? "bg-white text-stone-900 shadow-sm" : "text-stone-500"
+              )}>{v === "ARCH" ? "Arch" : "Classic"}</button>
+            ))}
+          </div>
           <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
             {(["FDI", "UNIVERSAL"] as const).map((n) => (
               <button key={n} onClick={() => setNumbering(n)} className={cn(
@@ -745,7 +1131,34 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
         </div>
       )}
 
-      {!isLoading && chartRes?.chart && (
+      {!isLoading && chartRes?.chart && viewMode === "ARCH" && (
+        <>
+          <div className="rounded-2xl border border-stone-200 bg-white p-3 sm:p-4 overflow-x-auto">
+            <ArchView
+              dentition={dentition}
+              teethByFdi={teethByFdi}
+              selectedFdi={selectedFdi}
+              numbering={numbering}
+              onClickTooth={(fdi) => { setInitialSurface(null); setSelectedFdi(fdi); }}
+              onClickSurface={(fdi, s) => { setInitialSurface(s); setSelectedFdi(fdi); }}
+            />
+          </div>
+
+          <details className="text-[10px] text-stone-500">
+            <summary className="cursor-pointer select-none">Status legend</summary>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 mt-2">
+              {STATUSES.map((s) => (
+                <div key={s} className="flex items-center gap-1.5">
+                  <span className={cn("w-3 h-3 rounded-full", STATUS_STYLES[s].dot)} />
+                  <span>{STATUS_STYLES[s].label}</span>
+                </div>
+              ))}
+            </div>
+          </details>
+        </>
+      )}
+
+      {!isLoading && chartRes?.chart && viewMode === "CLASSIC" && (
         <>
           <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4 sm:p-6 overflow-x-auto">
             <div className="min-w-fit mx-auto" style={{ maxWidth: "fit-content" }}>
