@@ -49,3 +49,4 @@ next-env.d.ts
 /android/captures
 /android/local.properties
 /android/*.iml
+/android/capacitor-cordova-android-plugins/build/

@@ -11,39 +11,42 @@ concurrency:
 
 jobs:
   deploy:
-    name: SSH deploy to VPS
+    name: SSH deploy to scalamedic VPS
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
     steps:
-      - name: Deploy over SSH
+      - name: Deploy over SSH (key auth)
         uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
-          password: ${{ secrets.SSH_PASSWORD }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
           script_stop: true
           command_timeout: 15m
           script: |
             set -euo pipefail
 
-            APP_DIR="/var/www/DentalCore"
+            APP_DIR="/var/www/dentacore/current"
             PM2_NAME="dentacore"
 
             echo ">>> Deploying to $APP_DIR (pm2: $PM2_NAME)"
             cd "$APP_DIR"
 
-            echo ">>> git pull"
+            echo ">>> git fetch + reset"
             git fetch --all --prune
             git reset --hard origin/main
 
             echo ">>> npm ci"
-            npm ci --legacy-peer-deps
+            npm ci --legacy-peer-deps --no-audit --no-fund
 
-            echo ">>> prisma generate + migrate deploy"
+            echo ">>> prisma generate + db push"
+            # We use db push (not migrate deploy) because the repo's prior migrations
+            # were SQLite-flavoured and have been archived. Once Postgres migrations
+            # are generated, switch this line back to: npx prisma migrate deploy
             npx prisma generate
-            npx prisma migrate deploy
+            npx prisma db push --skip-generate
 
             echo ">>> next build"
             npm run build

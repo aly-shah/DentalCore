@@ -1,11 +1,13 @@
-// DentaCore ERP — Prisma Schema (SQLite for local dev)
+// DentaCore ERP — Prisma Schema (PostgreSQL)
+// Local dev can still use SQLite by changing `provider` below and the
+// DATABASE_URL env to `file:./dev.db`; CI deploys to PostgreSQL.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
