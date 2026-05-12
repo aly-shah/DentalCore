@@ -2021,9 +2021,9 @@ function ToothPanel({
           {/* OVERVIEW TAB */}
           {tab === "overview" && (
             <>
-              {/* Status — visual grid */}
+              {/* Status — compact inline pills */}
               <section style={stagger(1)}>
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-stone-500">Status</label>
                   {status !== "HEALTHY" && (
                     <button
@@ -2034,7 +2034,7 @@ function ToothPanel({
                     </button>
                   )}
                 </div>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="flex flex-wrap gap-1">
                   {STATUSES.map((s) => {
                     const style = STATUS_STYLES[s];
                     const active = status === s;
@@ -2043,24 +2043,24 @@ function ToothPanel({
                         key={s}
                         onClick={() => setStatus(s)}
                         className={cn(
-                          "relative px-2 py-2.5 rounded-xl border-2 text-[11px] font-semibold transition-all flex flex-col items-center gap-1",
+                          "inline-flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-semibold transition-all",
                           active
-                            ? `${style.border} ${style.bg} ${style.text} shadow-sm`
-                            : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:shadow-sm"
+                            ? `${style.border} ${style.bg} ${style.text} shadow-sm scale-[1.03]`
+                            : "border-stone-200 bg-white text-stone-500 hover:border-stone-300 hover:bg-stone-50"
                         )}
                       >
-                        <span className={cn("w-3 h-3 rounded-full transition-transform", style.dot, active && "scale-110")} />
-                        <span className="text-center leading-tight">{style.label}</span>
+                        <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", style.dot)} />
+                        {style.label}
                       </button>
                     );
                   })}
                 </div>
               </section>
 
-              {/* Priority */}
+              {/* Priority — compact inline pills */}
               <section style={stagger(2)}>
-                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 block">Priority</label>
-                <div className="grid grid-cols-4 gap-1.5">
+                <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-1.5 block">Priority</label>
+                <div className="flex gap-1">
                   {(["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"] as const).map((p) => {
                     const active = priority === p;
                     const palette =
@@ -2068,15 +2068,21 @@ function ToothPanel({
                       : p === "HIGH"    ? "border-amber-300 bg-amber-50 text-amber-700"
                       : p === "MEDIUM"  ? "border-blue-300 bg-blue-50 text-blue-700"
                       :                   "border-violet-300 bg-violet-50 text-violet-700";
+                    const dot =
+                      p === "EMERGENCY" ? "bg-red-500"
+                      : p === "HIGH"    ? "bg-amber-500"
+                      : p === "MEDIUM"  ? "bg-blue-500"
+                      :                   "bg-violet-500";
                     return (
                       <button
                         key={p}
                         onClick={() => setPriority(p)}
                         className={cn(
-                          "px-2 py-2 rounded-lg border-2 text-[10px] font-bold transition-all",
+                          "flex-1 inline-flex items-center justify-center gap-1 px-2 py-1 rounded-md border text-[10px] font-bold transition-all",
                           active ? palette + " shadow-sm" : "border-stone-200 bg-white text-stone-400 hover:border-stone-300"
                         )}
                       >
+                        <span className={cn("w-1.5 h-1.5 rounded-full", active ? dot : "bg-stone-300")} />
                         {p.charAt(0) + p.slice(1).toLowerCase()}
                       </button>
                     );
