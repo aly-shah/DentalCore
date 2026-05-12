@@ -22,7 +22,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Smile, Save, X as XIcon, History, Plus, Activity, Layers, FileText, Trash2, AlertTriangle } from "lucide-react";
+import { Smile, Save, X as XIcon, History, Plus, Activity, Layers, FileText, Trash2, AlertTriangle, Sparkles, Check, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -1406,6 +1406,19 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
   return (
     <div className="space-y-4">
+      {/* Inline keyframes for chip/tab/drawer micro-animations */}
+      <style>{`
+        @keyframes chipPop {
+          0% { transform: scale(0.7) translateY(-2px); opacity: 0; }
+          60% { transform: scale(1.06); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes fadeSlideUp {
+          0% { transform: translateY(8px); opacity: 0; }
+          100% { transform: translateY(0); opacity: 1; }
+        }
+      `}</style>
+
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -1623,6 +1636,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           fdi={selectedFdi}
           existing={teethByFdi[selectedFdi]}
           initialSurface={initialSurface}
+          patientId={patientId}
           onClose={() => { setSelectedFdi(null); setInitialSurface(null); }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] })}
         />
@@ -1645,13 +1659,90 @@ const SURFACE_CHIPS: Array<{ key: Surface; label: string; short: string }> = [
   { key: "lingual",  label: "Lingual",   short: "L" },
 ];
 
+/** Common conditions — chip presets for fast charting */
+const CONDITION_CHIPS = [
+  "Cavity", "Sensitivity", "Plaque", "Tartar", "Erosion", "Attrition",
+  "Abrasion", "Discoloration", "Chipped", "Cracked", "Mobility",
+  "Gingivitis", "Periodontitis", "Recession", "Abscess",
+];
+
+/** Common dental procedures — chip presets for planned/completed treatment */
+const TREATMENT_CHIPS = [
+  "Filling", "Composite Filling", "Amalgam Filling",
+  "Root Canal", "RCT + Crown",
+  "Crown (PFM)", "Crown (Zirconia)", "Crown (E-Max)",
+  "Bridge",
+  "Extraction", "Surgical Extraction",
+  "Implant",
+  "Veneer", "Bonding",
+  "Scaling", "Polishing", "SRP",
+  "Whitening", "Sealant",
+  "Pulpotomy", "Apicoectomy",
+  "Denture (Partial)", "Denture (Full)",
+];
+
+/**
+ * Rule-based instant suggestions based on the tooth's current state.
+ * Returns 3-6 most-relevant procedures to suggest as quick chips.
+ */
+function suggestTreatments(status: ToothStatus, cat: ToothCategory, hasSurfaceData: boolean): string[] {
+  const anterior = cat === "incisor" || cat === "canine";
+
+  switch (status) {
+    case "CARIES":
+      // Caries → filling first, then more invasive if deep
+      return ["Composite Filling", "Filling", anterior ? "Composite Filling" : "RCT + Crown", "Crown (PFM)"];
+    case "FRACTURE":
+      return anterior
+        ? ["Bonding", "Veneer", "Crown (E-Max)", "Root Canal"]
+        : ["Crown (PFM)", "Crown (Zirconia)", "Root Canal", "Extraction"];
+    case "ROOT_CANAL":
+      // Post-RCT teeth typically need a crown
+      return ["Crown (PFM)", "Crown (Zirconia)", "Crown (E-Max)"];
+    case "EXTRACTION_NEEDED":
+      return ["Extraction", "Surgical Extraction", "Implant", "Bridge"];
+    case "MISSING":
+      return ["Implant", "Bridge", "Denture (Partial)"];
+    case "MOBILITY":
+      return ["SRP", "Splinting", "Extraction", "Periodontal evaluation"];
+    case "FILLING":
+      return ["Crown (PFM)", "RCT + Crown", "Replace filling"];
+    case "CROWN":
+      return ["Replace crown", "Periapical X-ray", "Endodontic re-evaluation"];
+    case "BRIDGE":
+      return ["Replace bridge", "Implant-supported crown"];
+    case "IMPLANT":
+      return ["Implant maintenance", "Crown (Zirconia)"];
+    case "TREATED":
+      return hasSurfaceData
+        ? ["Periapical X-ray", "Crown (PFM)", "Re-evaluation"]
+        : ["Scaling", "Polishing", "Fluoride application"];
+    case "UNDER_TREATMENT":
+      return ["Continue treatment", "Periapical X-ray"];
+    case "HEALTHY":
+      return ["Scaling", "Polishing", anterior ? "Whitening" : "Sealant", "Fluoride application"];
+    default:
+      return ["Scaling", "Polishing"];
+  }
+}
+
+/** Parse a comma-separated string into chip array. */
+function parseChips(s: string): string[] {
+  if (!s) return [];
+  return s.split(",").map((x) => x.trim()).filter(Boolean);
+}
+function joinChips(chips: string[]): string {
+  return chips.join(", ");
+}
+
 function ToothPanel({
-  chartId, fdi, existing, initialSurface, onClose, onSaved,
+  chartId, fdi, existing, initialSurface, patientId, onClose, onSaved,
 }: {
   chartId: string;
   fdi: number;
   existing?: ToothRecord;
   initialSurface?: Surface | null;
+  patientId?: string;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1666,21 +1757,93 @@ function ToothPanel({
   const [notes, setNotes] = useState(existing?.notes ?? "");
   const [surfaces, setSurfaces] = useState<Partial<Record<Surface, SurfaceData>>>(existing?.surfaces ?? {});
 
-  // Slide-in animation state
-  const [mounted, setMounted] = useState(false);
+  // AI suggestion state
+  interface AiSuggestion {
+    treatment: string;
+    cdtCode: string | null;
+    rationale: string;
+    estimatedVisits: number;
+    urgency: "ROUTINE" | "URGENT" | "EMERGENCY";
+    confidence: number;
+  }
+  const [aiSuggestions, setAiSuggestions] = useState<AiSuggestion[]>([]);
+  const [aiLoading, setAiLoading] = useState(false);
+
+  // Instant rule-based suggestions update reactively from status + category + surface data.
+  const hasSurfaceData = useMemo(
+    () => Object.values(surfaces).some((d) => !!(d?.condition || d?.completedTreatment || d?.plannedTreatment)),
+    [surfaces]
+  );
+  const instantSuggestions = useMemo(
+    () => suggestTreatments(status, cat, hasSurfaceData),
+    [status, cat, hasSurfaceData]
+  );
+
+  const patientIdForAi = patientId; // alias for clarity inside JSX
+
+  async function onAskAi() {
+    if (!patientIdForAi) return;
+    setAiLoading(true);
+    try {
+      // Build diagnosis from status + conditions + planned + surfaces
+      const condList = parseChips(conditions);
+      const diagnosis = [
+        `Tooth ${fdi} (${cat})`,
+        `Current status: ${STATUS_STYLES[status].label}`,
+        condList.length ? `Conditions: ${condList.join(", ")}` : "",
+        plannedTreatment ? `Planned: ${plannedTreatment}` : "",
+        hasSurfaceData ? `Surfaces with findings: ${(Object.keys(surfaces) as Surface[]).filter((s) => {
+          const d = surfaces[s];
+          return !!(d?.condition || d?.plannedTreatment);
+        }).join(", ")}` : "",
+      ].filter(Boolean).join(". ");
+
+      const r = await fetch("/api/ai/treatment-suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          diagnosis: diagnosis || `Tooth ${fdi} ${cat} clinical evaluation`,
+          toothFdi: fdi,
+          patientId: patientIdForAi,
+        }),
+      });
+      const j = await r.json();
+      if (j.success && Array.isArray(j.data?.suggestions)) {
+        setAiSuggestions(j.data.suggestions);
+      }
+    } catch {
+      // silent — UI already shows AI button state
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  // Slide-in animation state — multi-stage for dynamic entrance
+  const [mounted, setMounted] = useState(false);          // backdrop fade + panel slide
+  const [contentReady, setContentReady] = useState(false); // content stagger trigger
   const [tab, setTab] = useState<"overview" | "surfaces" | "notes">(initialSurface ? "surfaces" : "overview");
   const [activeSurface, setActiveSurface] = useState<Surface | null>(initialSurface ?? null);
 
   useEffect(() => {
-    // Mount → next paint → animate in
-    const id = requestAnimationFrame(() => setMounted(true));
-    return () => cancelAnimationFrame(id);
+    // Frame 1: panel slides in
+    const r1 = requestAnimationFrame(() => setMounted(true));
+    // ~200ms later: trigger content stagger
+    const t1 = setTimeout(() => setContentReady(true), 180);
+    return () => { cancelAnimationFrame(r1); clearTimeout(t1); };
   }, []);
 
   const handleClose = () => {
+    setContentReady(false);
     setMounted(false);
-    setTimeout(onClose, 220);
+    setTimeout(onClose, 260);
   };
+
+  // Stagger delays for sections inside the panel
+  const stagger = (i: number) => ({
+    opacity: contentReady ? 1 : 0,
+    transform: contentReady ? "translateY(0)" : "translateY(10px)",
+    transition: `opacity 280ms cubic-bezier(0.16, 1, 0.3, 1) ${i * 45}ms, transform 320ms cubic-bezier(0.16, 1, 0.3, 1) ${i * 45}ms`,
+  });
 
   // ESC closes
   useEffect(() => {
@@ -1746,28 +1909,42 @@ function ToothPanel({
 
   return (
     <div className="fixed inset-0 z-40">
-      {/* Backdrop */}
+      {/* Backdrop — fades + blurs in */}
       <div
         onClick={handleClose}
+        style={{
+          backdropFilter: mounted ? "blur(4px)" : "blur(0px)",
+          transition: "opacity 260ms ease-out, backdrop-filter 260ms ease-out",
+        }}
         className={cn(
-          "absolute inset-0 bg-slate-900/30 backdrop-blur-[2px] transition-opacity duration-200",
+          "absolute inset-0 bg-slate-900/40",
           mounted ? "opacity-100" : "opacity-0"
         )}
       />
 
-      {/* Right drawer */}
+      {/* Right drawer — spring-overshoot slide with subtle scale */}
       <aside
-        className={cn(
-          "absolute top-0 bottom-0 right-0 w-full sm:w-[440px] md:w-[480px] bg-white shadow-2xl flex flex-col",
-          "transition-transform duration-[220ms] ease-out",
-          mounted ? "translate-x-0" : "translate-x-full"
-        )}
+        style={{
+          transform: mounted
+            ? "translateX(0) scale(1)"
+            : "translateX(100%) scale(0.97)",
+          transformOrigin: "right center",
+          transition: mounted
+            // Spring-back easing on entry — slight overshoot then settle
+            ? "transform 320ms cubic-bezier(0.34, 1.35, 0.64, 1), box-shadow 200ms ease-out"
+            // Faster cleaner exit
+            : "transform 220ms cubic-bezier(0.7, 0, 0.84, 0), box-shadow 200ms ease-out",
+          boxShadow: mounted
+            ? "-30px 0 60px -20px rgba(15, 23, 42, 0.25), -10px 0 30px -10px rgba(15, 23, 42, 0.15)"
+            : "none",
+        }}
+        className="absolute top-0 bottom-0 right-0 w-full sm:w-[440px] md:w-[480px] bg-white flex flex-col will-change-transform"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={`Edit tooth ${fdi}`}
       >
         {/* ───── Header ───── */}
-        <header className="shrink-0 px-5 pt-5 pb-4 border-b border-stone-100">
+        <header className="shrink-0 px-5 pt-5 pb-4 border-b border-stone-100" style={stagger(0)}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {/* Mini tooth icon */}
@@ -1845,7 +2022,7 @@ function ToothPanel({
           {tab === "overview" && (
             <>
               {/* Status — visual grid */}
-              <section>
+              <section style={stagger(1)}>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-stone-500">Status</label>
                   {status !== "HEALTHY" && (
@@ -1881,7 +2058,7 @@ function ToothPanel({
               </section>
 
               {/* Priority */}
-              <section>
+              <section style={stagger(2)}>
                 <label className="text-xs font-bold uppercase tracking-wider text-stone-500 mb-2 block">Priority</label>
                 <div className="grid grid-cols-4 gap-1.5">
                   {(["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"] as const).map((p) => {
@@ -1907,41 +2084,87 @@ function ToothPanel({
                 </div>
               </section>
 
-              {/* Conditions */}
-              <Input
-                label="Conditions"
-                placeholder="e.g. Cavity, Fracture, Sensitivity"
-                value={conditions}
-                onChange={(e) => setConditions(e.target.value)}
-              />
-
-              {/* Planned + Completed */}
-              <div className="space-y-3">
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-cyan-600 mb-1.5 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-500" /> Planned
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Root Canal Therapy, Crown D2740"
-                    value={plannedTreatment}
-                    onChange={(e) => setPlannedTreatment(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border-2 border-cyan-100 focus:border-cyan-400 focus:outline-none bg-cyan-50/30 placeholder:text-stone-400"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-emerald-600 mb-1.5 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Completed
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Filling — composite occlusal"
-                    value={completedTreatment}
-                    onChange={(e) => setCompletedTreatment(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border-2 border-emerald-100 focus:border-emerald-400 focus:outline-none bg-emerald-50/30 placeholder:text-stone-400"
-                  />
-                </div>
+              <div style={stagger(3)}>
+                <ChipField
+                  label="Conditions"
+                  accentClass="rose"
+                  values={parseChips(conditions)}
+                  onChange={(chips) => setConditions(joinChips(chips))}
+                  suggestions={CONDITION_CHIPS}
+                  placeholder="Type or pick…"
+                />
               </div>
+
+              <div style={stagger(4)}>
+                <ChipField
+                  label="Planned Treatment"
+                  accentClass="cyan"
+                  values={parseChips(plannedTreatment)}
+                  onChange={(chips) => setPlannedTreatment(joinChips(chips))}
+                  suggestions={instantSuggestions}
+                  instantBadge="Smart"
+                  placeholder="Add procedure to plan…"
+                  showAiButton={!!patientIdForAi}
+                  onAskAi={onAskAi}
+                  aiLoading={aiLoading}
+                />
+              </div>
+
+              <div style={stagger(5)}>
+                <ChipField
+                  label="Completed Treatment"
+                  accentClass="emerald"
+                  values={parseChips(completedTreatment)}
+                  onChange={(chips) => setCompletedTreatment(joinChips(chips))}
+                  suggestions={TREATMENT_CHIPS.slice(0, 12)}
+                  placeholder="Add finished procedure…"
+                />
+              </div>
+
+              {/* AI suggestions surface — staggered entry */}
+              {aiSuggestions.length > 0 && (
+                <section
+                  style={stagger(6)}
+                  className="rounded-2xl border-2 border-violet-200 bg-gradient-to-br from-violet-50 to-fuchsia-50/60 p-3 space-y-2"
+                >
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-violet-500" />
+                    <span className="text-[11px] uppercase tracking-wider font-bold text-violet-700">AI Treatment Suggestions</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {aiSuggestions.slice(0, 3).map((s, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          const current = parseChips(plannedTreatment);
+                          if (!current.includes(s.treatment)) {
+                            setPlannedTreatment(joinChips([...current, s.treatment]));
+                          }
+                        }}
+                        className="w-full text-left bg-white/80 hover:bg-white border border-violet-200 hover:border-violet-300 rounded-xl px-3 py-2 transition-all group hover:shadow-md hover:-translate-y-px"
+                      >
+                        <div className="flex items-center justify-between gap-2 mb-0.5">
+                          <span className="text-xs font-bold text-stone-900">{s.treatment}</span>
+                          <div className="flex items-center gap-1.5">
+                            {s.cdtCode && <span className="text-[9px] font-mono text-stone-400">{s.cdtCode}</span>}
+                            <span className={cn(
+                              "text-[9px] font-bold uppercase px-1.5 py-0.5 rounded",
+                              s.urgency === "EMERGENCY" ? "bg-red-100 text-red-700"
+                              : s.urgency === "URGENT" ? "bg-amber-100 text-amber-700"
+                              : "bg-emerald-100 text-emerald-700"
+                            )}>{s.urgency}</span>
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-stone-600 leading-tight">{s.rationale}</p>
+                        <div className="flex items-center justify-between mt-1.5">
+                          <span className="text-[9px] text-stone-400">{s.estimatedVisits} visit{s.estimatedVisits === 1 ? "" : "s"} · {Math.round(s.confidence * 100)}% confidence</span>
+                          <Plus className="w-3 h-3 text-violet-400 group-hover:text-violet-600 transition-colors" />
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
             </>
           )}
 
@@ -2100,6 +2323,156 @@ function ToothPanel({
           </div>
         </footer>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * Chip-based input field with suggestion chips beneath.
+ * - Type + Enter (or comma) adds a chip.
+ * - Backspace on empty input deletes the last chip.
+ * - Click a suggestion chip below to add it.
+ * - Stored as comma-separated string at the data layer for backward compat.
+ *
+ * Optional AI button on the right that triggers an LLM call (when patientId
+ * is available).
+ */
+function ChipField({
+  label,
+  accentClass,
+  values,
+  onChange,
+  suggestions,
+  placeholder,
+  instantBadge,
+  showAiButton,
+  onAskAi,
+  aiLoading,
+}: {
+  label: string;
+  accentClass: "rose" | "cyan" | "emerald" | "stone" | "violet";
+  values: string[];
+  onChange: (chips: string[]) => void;
+  suggestions: string[];
+  placeholder?: string;
+  instantBadge?: string;
+  showAiButton?: boolean;
+  onAskAi?: () => void;
+  aiLoading?: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+
+  const palette: Record<typeof accentClass, { border: string; bg: string; chip: string; label: string; dot: string }> = {
+    rose:    { border: "border-rose-200",    bg: "bg-rose-50/30",    chip: "bg-rose-100 text-rose-800 border-rose-200",       label: "text-rose-700",    dot: "bg-rose-500" },
+    cyan:    { border: "border-cyan-200",    bg: "bg-cyan-50/30",    chip: "bg-cyan-100 text-cyan-800 border-cyan-200",       label: "text-cyan-700",    dot: "bg-cyan-500" },
+    emerald: { border: "border-emerald-200", bg: "bg-emerald-50/30", chip: "bg-emerald-100 text-emerald-800 border-emerald-200", label: "text-emerald-700", dot: "bg-emerald-500" },
+    stone:   { border: "border-stone-200",   bg: "bg-white",         chip: "bg-stone-100 text-stone-700 border-stone-200",     label: "text-stone-700",   dot: "bg-stone-500" },
+    violet:  { border: "border-violet-200",  bg: "bg-violet-50/30",  chip: "bg-violet-100 text-violet-800 border-violet-200",  label: "text-violet-700",  dot: "bg-violet-500" },
+  };
+  const accent = palette[accentClass];
+
+  function addChip(value: string) {
+    const v = value.trim();
+    if (!v || values.includes(v)) { setDraft(""); return; }
+    onChange([...values, v]);
+    setDraft("");
+  }
+  function removeChip(value: string) {
+    onChange(values.filter((v) => v !== value));
+  }
+
+  const visibleSuggestions = suggestions.filter((s) => !values.includes(s)).slice(0, 8);
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1.5">
+        <label className={cn("text-xs font-bold uppercase tracking-wider flex items-center gap-1.5", accent.label)}>
+          <span className={cn("w-1.5 h-1.5 rounded-full", accent.dot)} />
+          {label}
+          {instantBadge && (
+            <span className="ml-1 inline-flex items-center gap-0.5 text-[8px] font-bold uppercase bg-stone-100 text-stone-500 px-1.5 py-0.5 rounded">
+              <Zap className="w-2 h-2" /> {instantBadge}
+            </span>
+          )}
+        </label>
+        {showAiButton && (
+          <button
+            onClick={onAskAi}
+            disabled={aiLoading}
+            className={cn(
+              "text-[10px] font-bold flex items-center gap-1 px-2 py-1 rounded-md transition-all",
+              "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white",
+              "hover:shadow-md hover:scale-[1.04] active:scale-[0.98]",
+              "disabled:opacity-60 disabled:hover:scale-100"
+            )}
+          >
+            <Sparkles className={cn("w-3 h-3", aiLoading && "animate-spin")} />
+            {aiLoading ? "Thinking…" : "Ask AI"}
+          </button>
+        )}
+      </div>
+
+      {/* Input + chip area */}
+      <div className={cn(
+        "rounded-xl border-2 px-2 py-2 transition-all",
+        accent.border, accent.bg,
+        "focus-within:border-stone-500 focus-within:bg-white focus-within:shadow-sm"
+      )}>
+        <div className="flex flex-wrap gap-1.5 items-center">
+          {values.map((v) => (
+            <span
+              key={v}
+              className={cn(
+                "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium border transition-all",
+                accent.chip
+              )}
+              style={{
+                animation: "chipPop 220ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+              }}
+            >
+              {v}
+              <button
+                onClick={() => removeChip(v)}
+                className="hover:bg-black/10 rounded-full p-0.5 -mr-1 transition-colors"
+                aria-label={`Remove ${v}`}
+              >
+                <XIcon className="w-2.5 h-2.5" />
+              </button>
+            </span>
+          ))}
+          <input
+            type="text"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                addChip(draft);
+              } else if (e.key === "Backspace" && !draft && values.length > 0) {
+                e.preventDefault();
+                removeChip(values[values.length - 1]);
+              }
+            }}
+            placeholder={values.length === 0 ? placeholder : ""}
+            className="flex-1 min-w-[100px] px-1 py-0.5 text-[12px] bg-transparent focus:outline-none placeholder:text-stone-400"
+          />
+        </div>
+      </div>
+
+      {/* Suggestion chips below */}
+      {visibleSuggestions.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {visibleSuggestions.map((s) => (
+            <button
+              key={s}
+              onClick={() => addChip(s)}
+              className="text-[10px] px-2 py-0.5 rounded-full bg-stone-100 hover:bg-stone-200 text-stone-600 border border-transparent hover:border-stone-300 transition-all hover:-translate-y-px hover:shadow-sm active:scale-95"
+            >
+              + {s}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
