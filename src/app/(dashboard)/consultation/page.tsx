@@ -130,6 +130,104 @@ export default function ConsultationPage() {
   const diagnosisKey = diagnosis.toLowerCase().trim();
   const suggestions = Object.entries(DIAGNOSIS_SUGGESTIONS).find(([key]) => diagnosisKey.includes(key))?.[1] || null;
 
+  // AI-powered treatment suggestions (real LLM, /api/ai/treatment-suggestions)
+  type AISuggestion = {
+    treatment: string;
+    cdtCode: string | null;
+    rationale: string;
+    estimatedVisits: number;
+    urgency: "ROUTINE" | "URGENT" | "EMERGENCY";
+    confidence: number;
+    status?: "PROPOSED" | "ACCEPTED" | "REJECTED"; // local-only state for UI
+  };
+  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[] | null>(null);
+  const [aiSuggestionLogId, setAiSuggestionLogId] = useState<string | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+
+  async function askAI() {
+    if (!diagnosis.trim()) {
+      setAiError("Enter a diagnosis first");
+      return;
+    }
+    setAiError("");
+    setAiLoading(true);
+    setAiSuggestions(null);
+    try {
+      const body: Record<string, unknown> = {
+        diagnosis: diagnosis.trim(),
+        ...(complaint.trim() ? { chiefComplaint: complaint.trim() } : {}),
+        ...(patientId ? { patientId } : {}),
+        ...(appointmentId ? { appointmentId } : {}),
+        ...(selected?.allergies?.length
+          ? { allergies: selected.allergies.map((a: { allergen?: string } | string) =>
+              typeof a === "string" ? a : a.allergen ?? "").filter(Boolean) }
+          : {}),
+      };
+      if (selected?.dateOfBirth) {
+        const age = Math.floor((Date.now() - new Date(selected.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
+        if (age >= 0 && age <= 130) body.patientAge = age;
+      }
+      const r = await fetch("/api/ai/treatment-suggestions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json();
+      if (!r.ok || !j.success) {
+        setAiError(j.error || "AI service unavailable");
+        return;
+      }
+      const list = (j.data?.suggestions ?? []) as AISuggestion[];
+      setAiSuggestions(list.map((s) => ({ ...s, status: "PROPOSED" })));
+      setAiSuggestionLogId(j.data?.suggestionLogId ?? null);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Network error");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  async function acceptAiSuggestion(index: number) {
+    if (!aiSuggestionLogId || !aiSuggestions) return;
+    const s = aiSuggestions[index];
+    // Add to procedures
+    setProcedures((prev) => [...prev, { id: crypto.randomUUID(), name: s.treatment, area: "", notes: s.cdtCode ? `CDT: ${s.cdtCode}` : "" }]);
+    // Mark locally
+    setAiSuggestions((prev) =>
+      prev ? prev.map((x, i) => (i === index ? { ...x, status: "ACCEPTED" } : x)) : prev
+    );
+    // Best-effort accept call — we only flip the FIRST accept (the log is shared across all suggestions from this call)
+    try {
+      await fetch(`/api/ai/suggestions/${aiSuggestionLogId}/accept`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          acceptedEntityType: "ConsultationNote.procedure",
+          acceptedEntityId: s.cdtCode ?? s.treatment,
+        }),
+      });
+    } catch {
+      // Non-fatal — accept call is provenance metadata; the procedure is already in the local plan.
+    }
+  }
+
+  async function rejectAiSuggestion(index: number, reason?: string) {
+    if (!aiSuggestionLogId || !aiSuggestions) return;
+    setAiSuggestions((prev) =>
+      prev ? prev.map((x, i) => (i === index ? { ...x, status: "REJECTED" } : x)) : prev
+    );
+    try {
+      await fetch(`/api/ai/suggestions/${aiSuggestionLogId}/reject`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+    } catch {
+      // Non-fatal.
+    }
+  }
+
   // Mutations
   const createNote = useCreatePatientNote(patientId);
   const createRx = useCreatePatientPrescription(patientId);
@@ -466,6 +564,89 @@ export default function ConsultationPage() {
                       )}>{d}</button>
                   ))}
                 </div>
+                {/* Real-LLM Treatment Suggestions (GPT-4o-mini, full provenance) */}
+                <div className="flex items-center gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    iconLeft={<Sparkles className="w-3.5 h-3.5 text-violet-500" />}
+                    onClick={askAI}
+                    disabled={aiLoading || !diagnosis.trim()}
+                  >
+                    {aiLoading ? "Asking AI…" : "Ask AI for treatment options"}
+                  </Button>
+                  {aiError && <span className="text-[11px] text-red-500">{aiError}</span>}
+                </div>
+                {aiSuggestions && aiSuggestions.length > 0 && (
+                  <div className="bg-gradient-to-r from-violet-50 to-fuchsia-50/60 rounded-xl border border-violet-200 p-3 space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-violet-500" />
+                      <span className="text-[10px] font-semibold text-violet-700 uppercase tracking-wider">AI Treatment Options · gpt-4o-mini</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {aiSuggestions.map((s, i) => {
+                        const conf = Math.round((s.confidence ?? 0) * 100);
+                        const isAccepted = s.status === "ACCEPTED";
+                        const isRejected = s.status === "REJECTED";
+                        const urgencyColor = s.urgency === "EMERGENCY" ? "text-red-600 bg-red-50 border-red-200" : s.urgency === "URGENT" ? "text-amber-700 bg-amber-50 border-amber-200" : "text-emerald-700 bg-emerald-50 border-emerald-200";
+                        return (
+                          <div key={i} className={cn(
+                            "bg-white rounded-lg border p-2.5 space-y-1.5 transition-all",
+                            isAccepted ? "border-emerald-300 bg-emerald-50/40" :
+                            isRejected ? "border-stone-200 opacity-50" :
+                            "border-violet-200"
+                          )}>
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-sm font-semibold text-stone-900">{s.treatment}</span>
+                                  {s.cdtCode && <span className="text-[10px] text-stone-500 font-mono bg-stone-100 px-1.5 py-0.5 rounded">{s.cdtCode}</span>}
+                                  <span className={cn("text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded border", urgencyColor)}>{s.urgency}</span>
+                                  <span className="text-[10px] text-stone-400">~{s.estimatedVisits} visit{s.estimatedVisits === 1 ? "" : "s"}</span>
+                                </div>
+                                <p className="text-[11px] text-stone-600 leading-snug mt-1">{s.rationale}</p>
+                              </div>
+                              <div className="flex flex-col items-end gap-1 shrink-0">
+                                <div className="flex items-center gap-1">
+                                  <div className="w-8 h-1 bg-stone-200 rounded-full overflow-hidden">
+                                    <div className={cn("h-full", conf >= 80 ? "bg-emerald-500" : conf >= 50 ? "bg-amber-500" : "bg-red-400")} style={{ width: `${conf}%` }} />
+                                  </div>
+                                  <span className="text-[9px] font-medium text-stone-500">{conf}%</span>
+                                </div>
+                              </div>
+                            </div>
+                            {!isAccepted && !isRejected && (
+                              <div className="flex items-center gap-1.5 pt-0.5">
+                                <button
+                                  onClick={() => acceptAiSuggestion(i)}
+                                  className="px-2 py-1 rounded-md bg-emerald-600 text-white text-[10px] font-semibold hover:bg-emerald-700 transition-colors cursor-pointer"
+                                >
+                                  ✓ Add to plan
+                                </button>
+                                <button
+                                  onClick={() => rejectAiSuggestion(i)}
+                                  className="px-2 py-1 rounded-md bg-white border border-stone-200 text-stone-500 text-[10px] font-medium hover:border-stone-300 hover:text-stone-700 transition-colors cursor-pointer"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            )}
+                            {isAccepted && (
+                              <p className="text-[10px] text-emerald-600 font-medium pt-0.5">✓ Added to procedure list</p>
+                            )}
+                            {isRejected && (
+                              <p className="text-[10px] text-stone-400 pt-0.5">Rejected</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[9px] text-stone-400 leading-tight pt-1">
+                      AI suggestions are advisory only. Clinician decision is required. Every suggestion is logged for audit (model version, prompt, response, accept/reject).
+                    </p>
+                  </div>
+                )}
+
                 {/* AI Suggestions based on diagnosis */}
                 {suggestions && (
                   <div className="bg-gradient-to-r from-indigo-50/50 to-violet-50/50 rounded-xl border border-indigo-100 p-3 space-y-2 animate-fade-in">

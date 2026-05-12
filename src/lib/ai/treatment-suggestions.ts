@@ -8,6 +8,7 @@
  * from AI is medically defensible.
  */
 import crypto from "node:crypto";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getOpenAI, priceCents } from "./openai";
@@ -99,7 +100,7 @@ export async function suggestTreatments(
       appointmentId: context.appointmentId ?? null,
       modelVersionId: modelVersion.id,
       subsystem: SUBSYSTEM,
-      inputSnapshot: input as unknown as Record<string, unknown>,
+      inputSnapshot: input as unknown as Prisma.InputJsonValue,
       inputHash,
       status: "PROPOSED",
     },
@@ -146,8 +147,8 @@ export async function suggestTreatments(
     await prisma.aISuggestionLog.update({
       where: { id: log.id },
       data: {
-        rawResponse: completion as unknown as Record<string, unknown>,
-        parsedResponse: parsed as unknown as Record<string, unknown>,
+        rawResponse: completion as unknown as Prisma.InputJsonValue,
+        parsedResponse: parsed as unknown as Prisma.InputJsonValue,
         confidence: avgConfidence,
         latencyMs: latency,
         costCents: cost,
