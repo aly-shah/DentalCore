@@ -8,8 +8,45 @@ import { prisma } from "@/lib/prisma";
 
 import { toClinicDay } from "@/lib/utils";
 import { logger } from "@/lib/logger";
-export async function POST() {
+
+/**
+ * Guard the cron endpoint with a shared secret.
+ *
+ * When `CRON_SECRET` is set in the environment, callers MUST send a matching
+ * `x-cron-secret` header (or `?secret=` query string) or the request is
+ * rejected with 401. This makes the endpoint safe to expose via plain HTTP
+ * cron, GitHub Actions schedule, or any external scheduler.
+ *
+ * When `CRON_SECRET` is unset (e.g., local development) the endpoint is
+ * unguarded. Production deployments MUST set it.
+ */
+function isCronAuthorized(request: Request): boolean {
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return true;
+
+  const headerSecret = request.headers.get("x-cron-secret");
+  if (headerSecret && headerSecret === secret) return true;
+
+  const querySecret = new URL(request.url).searchParams.get("secret");
+  if (querySecret && querySecret === secret) return true;
+
+  // Some platforms (Vercel) send `Authorization: Bearer <secret>` for crons.
+  const auth = request.headers.get("authorization");
+  if (auth?.startsWith("Bearer ") && auth.slice(7) === secret) return true;
+
+  return false;
+}
+
+export async function POST(request: Request) {
   try {
+    if (!isCronAuthorized(request)) {
+      logger.warn("Unauthorised /api/cron/reminders attempt", {
+        ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown",
+        ua: request.headers.get("user-agent") ?? "unknown",
+      });
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
