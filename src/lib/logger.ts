@@ -8,6 +8,27 @@ interface LogEntry {
   timestamp: string;
 }
 
+/**
+ * Forward error-level entries to Sentry. Lazy-required so this file works
+ * in environments where @sentry/nextjs isn't installed (tests, local
+ * scripts). When SENTRY_DSN is unset, Sentry.captureException is a no-op.
+ */
+function sendToSentry(message: string, error?: unknown, context?: Record<string, unknown>): void {
+  if (typeof process === "undefined" || process.env.SENTRY_DSN === undefined) return;
+  try {
+    // Use dynamic require so tsx + vitest don't fail when Sentry isn't loaded.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const Sentry = require("@sentry/nextjs") as typeof import("@sentry/nextjs");
+    if (error instanceof Error) {
+      Sentry.captureException(error, { extra: { message, ...(context ?? {}) } });
+    } else {
+      Sentry.captureMessage(message, { level: "error", extra: { error, ...(context ?? {}) } });
+    }
+  } catch {
+    // Sentry not available — ignore.
+  }
+}
+
 function sanitize(data: unknown): unknown {
   if (data instanceof Error) {
     return { name: data.name, message: data.message, stack: data.stack?.split("\n").slice(0, 3).join("\n") };
@@ -55,14 +76,17 @@ export const logger = {
       data: { ...(data || {}), error: sanitize(error) } as Record<string, unknown>,
       timestamp: new Date().toISOString(),
     });
+    sendToSentry(message, error, data);
   },
   api(method: string, path: string, error?: unknown) {
+    const msg = `${method} ${path} failed`;
     emit({
       level: "error",
-      message: `${method} ${path} failed`,
+      message: msg,
       module: "api",
       data: error ? { error: sanitize(error) } as Record<string, unknown> : undefined,
       timestamp: new Date().toISOString(),
     });
+    sendToSentry(msg, error, { module: "api", method, path });
   },
 };
