@@ -139,6 +139,283 @@ const SURFACE_LABELS: Record<Surface, string> = {
   lingual: "L (Lingual)",
 };
 
+// ───────── anatomical tooth SVG ─────────
+
+type ToothCategory = "incisor" | "canine" | "premolar" | "molar";
+
+function toothCategory(fdi: number): ToothCategory {
+  // Position within quadrant (1 = central incisor, 8 = third molar).
+  // For primary teeth (51-85): 1-2 incisors, 3 canine, 4-5 molars.
+  const last = fdi % 10;
+  const isPrimary = (fdi >= 51 && fdi <= 85);
+  if (isPrimary) {
+    if (last <= 2) return "incisor";
+    if (last === 3) return "canine";
+    return "molar";
+  }
+  if (last <= 2) return "incisor";
+  if (last === 3) return "canine";
+  if (last === 4 || last === 5) return "premolar";
+  return "molar"; // 6, 7, 8
+}
+
+/**
+ * Surface fill color based on the tooth's surface data or top-level
+ * status. If the surface has its own condition/treatment, paint that
+ * surface; otherwise fall back to the tooth's overall status colour.
+ */
+function surfaceFill(
+  toothStatus: ToothStatus,
+  surfaceData: SurfaceData | undefined
+): { fill: string; stroke: string } {
+  // Surface-specific data wins
+  if (surfaceData?.condition || surfaceData?.completedTreatment) {
+    if (surfaceData.completedTreatment) {
+      return { fill: "#10b981", stroke: "#059669" }; // emerald — treated
+    }
+    return { fill: "#f43f5e", stroke: "#e11d48" }; // rose — caries / problem
+  }
+  if (surfaceData?.plannedTreatment) {
+    return { fill: "#06b6d4", stroke: "#0891b2" }; // cyan — planned
+  }
+  // Fall back to tooth-level status (only paints if not healthy)
+  const map: Partial<Record<ToothStatus, { fill: string; stroke: string }>> = {
+    HEALTHY: { fill: "#ffffff", stroke: "#e7e5e4" },
+    CARIES: { fill: "#fecdd3", stroke: "#fb7185" },
+    FILLING: { fill: "#fde68a", stroke: "#f59e0b" },
+    CROWN: { fill: "#fef08a", stroke: "#eab308" },
+    BRIDGE: { fill: "#fed7aa", stroke: "#f97316" },
+    IMPLANT: { fill: "#bfdbfe", stroke: "#3b82f6" },
+    MISSING: { fill: "#e7e5e4", stroke: "#a8a29e" },
+    ROOT_CANAL: { fill: "#e9d5ff", stroke: "#a855f7" },
+    EXTRACTION_NEEDED: { fill: "#fecaca", stroke: "#dc2626" },
+    MOBILITY: { fill: "#fbcfe8", stroke: "#ec4899" },
+    FRACTURE: { fill: "#ddd6fe", stroke: "#8b5cf6" },
+    PROBLEM: { fill: "#fecdd3", stroke: "#fb7185" },
+    UNDER_TREATMENT: { fill: "#a5f3fc", stroke: "#06b6d4" },
+    TREATED: { fill: "#a7f3d0", stroke: "#10b981" },
+  };
+  return map[toothStatus] ?? map.HEALTHY!;
+}
+
+interface ToothSVGProps {
+  fdi: number;
+  arch: "upper" | "lower";
+  status: ToothStatus;
+  surfaces: Partial<Record<Surface, SurfaceData>> | null;
+  selected: boolean;
+  label: string;
+  onClickTooth: () => void;
+  onClickSurface: (surface: Surface) => void;
+}
+
+function ToothSVG({ fdi, arch, status, surfaces, selected, label, onClickTooth, onClickSurface }: ToothSVGProps) {
+  const cat = toothCategory(fdi);
+
+  // Tooth crown width by category (in SVG units)
+  const cw = cat === "incisor" ? 24 : cat === "canine" ? 26 : cat === "premolar" ? 30 : 34;
+  const ch = 34; // crown height
+  const rw = cw - 8; // root width (top for upper / bottom for lower)
+  const rh = 14; // root height
+  const VB_W = 40;
+  const VB_H = 56;
+  const crownX = (VB_W - cw) / 2;
+  const crownY = arch === "upper" ? rh + 2 : 4;
+  const rootY = arch === "upper" ? 2 : crownY + ch;
+  const rootX = (VB_W - rw) / 2;
+
+  // 3x3 grid within crown for 5 surfaces.
+  const cellW = cw / 3;
+  const cellH = ch / 3;
+  // Note: in clinical convention from the chair side, M is toward
+  // midline (centre). For all teeth in our straight-row layout we put
+  // M on the side facing the centre — that's the LEFT for Q1+Q4 (right
+  // side of mouth viewed) and RIGHT for Q2+Q3 (left side of mouth).
+  const quadrant = Math.floor(fdi / 10); // 1, 2, 3, 4, 5..8
+  // For straight rows aligned by quadrant blocks, M is on the inner edge.
+  // Q1 (upper right) sits on the LEFT half of the row → M is on the RIGHT.
+  // Q2 (upper left) sits on the RIGHT half → M is on the LEFT.
+  // Q3 (lower left) RIGHT half → M on LEFT.
+  // Q4 (lower right) LEFT half → M on RIGHT.
+  // Primary: same pattern (51-55 like Q1, 61-65 like Q2, etc.)
+  const mOnRight = quadrant === 1 || quadrant === 4 || quadrant === 5 || quadrant === 8;
+  const mesialCol = mOnRight ? 2 : 0;
+  const distalCol = mOnRight ? 0 : 2;
+  // For upper teeth, B (buccal/labial = cheek-facing) is the row toward
+  // the patient's lips → top of our crown (closest to the gum line which
+  // is at top for upper).
+  const buccalRow = arch === "upper" ? 0 : 2;
+  const lingualRow = arch === "upper" ? 2 : 0;
+
+  const surfaceCells: Array<{ s: Surface; col: number; row: number }> = [
+    { s: "occlusal", col: 1, row: 1 },
+    { s: "buccal",   col: 1, row: buccalRow },
+    { s: "lingual",  col: 1, row: lingualRow },
+    { s: "mesial",   col: mesialCol, row: 1 },
+    { s: "distal",   col: distalCol, row: 1 },
+  ];
+
+  // Crown outline path — molars + premolars have cusps drawn at the
+  // chewing edge for visual differentiation.
+  let crownPath: React.ReactNode;
+  if (cat === "molar" || cat === "premolar") {
+    // square-ish with subtly notched chewing edge
+    crownPath = (
+      <rect
+        x={crownX}
+        y={crownY}
+        width={cw}
+        height={ch}
+        rx={4}
+        fill="white"
+        stroke="#a8a29e"
+        strokeWidth={1.2}
+      />
+    );
+  } else if (cat === "canine") {
+    // Pointed cusp at chewing edge
+    const tipY = arch === "upper" ? crownY + ch : crownY;
+    const baseY = arch === "upper" ? crownY : crownY + ch;
+    crownPath = (
+      <g>
+        <rect
+          x={crownX}
+          y={crownY}
+          width={cw}
+          height={ch * 0.8}
+          rx={3}
+          fill="white"
+          stroke="#a8a29e"
+          strokeWidth={1.2}
+        />
+        <path
+          d={`M ${crownX} ${baseY + (arch === "upper" ? ch * 0.8 : -ch * 0.8)} L ${VB_W / 2} ${tipY} L ${crownX + cw} ${baseY + (arch === "upper" ? ch * 0.8 : -ch * 0.8)} Z`}
+          fill="white"
+          stroke="#a8a29e"
+          strokeWidth={1.2}
+        />
+      </g>
+    );
+  } else {
+    // incisor — narrow rectangle with slightly rounded chewing edge
+    crownPath = (
+      <rect
+        x={crownX}
+        y={crownY}
+        width={cw}
+        height={ch}
+        rx={3}
+        ry={cat === "incisor" ? 6 : 3}
+        fill="white"
+        stroke="#a8a29e"
+        strokeWidth={1.2}
+      />
+    );
+  }
+
+  const rootPath = (
+    <path
+      d={
+        arch === "upper"
+          ? // root points up
+            `M ${rootX} ${rootY + rh} L ${rootX + rw / 2} ${rootY} L ${rootX + rw} ${rootY + rh} Z`
+          : // root points down
+            `M ${rootX} ${rootY} L ${rootX + rw / 2} ${rootY + rh} L ${rootX + rw} ${rootY} Z`
+      }
+      fill="#fafaf9"
+      stroke="#d6d3d1"
+      strokeWidth={0.8}
+    />
+  );
+
+  const missing = status === "MISSING";
+
+  return (
+    <button
+      type="button"
+      onClick={onClickTooth}
+      title={`FDI ${fdi} · ${cat} · ${STATUS_STYLES[status].label}`}
+      className={cn(
+        "relative inline-block transition-all",
+        selected ? "drop-shadow-lg scale-110 z-10" : "hover:drop-shadow-md",
+        missing && "opacity-40"
+      )}
+    >
+      <svg
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        width={VB_W * 0.9}
+        height={VB_H * 0.9}
+        className="overflow-visible"
+      >
+        {/* Root (rendered first so it sits behind the crown clip area) */}
+        {rootPath}
+        {/* Crown outline */}
+        {crownPath}
+        {/* Surface cells — only render the 5 active ones (cross) */}
+        {!missing &&
+          surfaceCells.map(({ s, col, row }) => {
+            const data = surfaces?.[s];
+            const { fill, stroke } = surfaceFill(status, data);
+            const x = crownX + col * cellW;
+            const y = crownY + row * cellH;
+            const isCenter = col === 1 && row === 1;
+            return (
+              <rect
+                key={s}
+                x={x + 1}
+                y={y + 1}
+                width={cellW - 2}
+                height={cellH - 2}
+                rx={1.5}
+                fill={fill}
+                stroke={stroke}
+                strokeWidth={isCenter ? 0.8 : 0.6}
+                opacity={(data || status !== "HEALTHY") ? 0.95 : 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClickSurface(s);
+                }}
+                style={{ cursor: "pointer" }}
+              >
+                <title>{`${s} surface`}</title>
+              </rect>
+            );
+          })}
+        {/* Missing X */}
+        {missing && (
+          <g stroke="#78716c" strokeWidth={2} strokeLinecap="round">
+            <line x1={crownX + 4} y1={crownY + 4} x2={crownX + cw - 4} y2={crownY + ch - 4} />
+            <line x1={crownX + cw - 4} y1={crownY + 4} x2={crownX + 4} y2={crownY + ch - 4} />
+          </g>
+        )}
+        {/* Selection ring */}
+        {selected && (
+          <rect
+            x={crownX - 2}
+            y={(arch === "upper" ? rootY : crownY) - 2}
+            width={cw + 4}
+            height={ch + rh + 4}
+            rx={5}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth={1.5}
+            strokeDasharray="2 2"
+          />
+        )}
+      </svg>
+      {/* FDI / Universal label */}
+      <span
+        className={cn(
+          "absolute left-1/2 -translate-x-1/2 text-[8px] sm:text-[9px] font-bold text-stone-600",
+          arch === "upper" ? "-bottom-3.5" : "-top-3.5"
+        )}
+      >
+        {label}
+      </span>
+    </button>
+  );
+}
+
 // ───────── component ─────────
 
 export default function DentalChartTabDefault(props: { patientId: string; onExit?: () => void }) {
@@ -202,41 +479,35 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
     return String(fdi);
   }
 
-  function ToothButton({ fdi }: { fdi: number }) {
+  const [initialSurface, setInitialSurface] = useState<Surface | null>(null);
+
+  function Tooth({ fdi, arch }: { fdi: number; arch: "upper" | "lower" }) {
     const t = teethByFdi[fdi];
     const status = (t?.status ?? "HEALTHY") as ToothStatus;
-    const s = STATUS_STYLES[status];
-    const isSelected = selectedFdi === fdi;
-    const surfaceCount = t?.surfaces ? Object.values(t.surfaces).filter(Boolean).length : 0;
     return (
-      <button
-        type="button"
-        onClick={() => setSelectedFdi(fdi)}
-        title={`FDI ${fdi}${t ? ` — ${s.label}` : ""}`}
-        className={cn(
-          "relative w-7 h-9 sm:w-9 sm:h-12 rounded-md border-2 flex flex-col items-center justify-center text-[9px] sm:text-[10px] font-semibold transition-all cursor-pointer",
-          s.bg, s.border, s.text,
-          isSelected && "ring-2 ring-offset-1 ring-blue-500 scale-105 z-10",
-          status === "MISSING" && "opacity-50 line-through",
-        )}
-      >
-        <span>{fdiToDisplay(fdi)}</span>
-        {t && status !== "HEALTHY" && (
-          <span className={cn("absolute top-0 right-0 w-1.5 h-1.5 rounded-full -translate-y-0.5 translate-x-0.5", s.dot)} />
-        )}
-        {surfaceCount > 0 && (
-          <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] text-stone-500 leading-none">
-            {surfaceCount}s
-          </span>
-        )}
-      </button>
+      <ToothSVG
+        fdi={fdi}
+        arch={arch}
+        status={status}
+        surfaces={t?.surfaces ?? null}
+        selected={selectedFdi === fdi}
+        label={fdiToDisplay(fdi)}
+        onClickTooth={() => {
+          setInitialSurface(null);
+          setSelectedFdi(fdi);
+        }}
+        onClickSurface={(surface) => {
+          setInitialSurface(surface);
+          setSelectedFdi(fdi);
+        }}
+      />
     );
   }
 
-  function ToothRow({ fdis }: { fdis: number[] }) {
+  function ToothRow({ fdis, arch }: { fdis: number[]; arch: "upper" | "lower" }) {
     return (
-      <div className="flex gap-0.5 sm:gap-1">
-        {fdis.map((fdi) => <ToothButton key={fdi} fdi={fdi} />)}
+      <div className={cn("flex gap-1 sm:gap-1.5", arch === "upper" ? "items-end" : "items-start")}>
+        {fdis.map((fdi) => <Tooth key={fdi} fdi={fdi} arch={arch} />)}
       </div>
     );
   }
@@ -297,16 +568,16 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           <div className="rounded-xl border border-stone-200 bg-stone-50/60 p-3 sm:p-5 space-y-3 overflow-x-auto">
             <div className="space-y-3 min-w-fit">
               <div className="text-center text-[9px] uppercase tracking-wider text-stone-400">Upper · Right ◀  ▶ Left</div>
-              <div className="flex justify-center items-center gap-2">
-                <ToothRow fdis={upperFdisLeft} />
-                <div className="w-px h-8 bg-stone-200" />
-                <ToothRow fdis={upperFdisRight} />
+              <div className="flex justify-center items-end gap-3 sm:gap-4 pb-3">
+                <ToothRow fdis={upperFdisLeft} arch="upper" />
+                <div className="w-px h-10 bg-stone-200 self-end" />
+                <ToothRow fdis={upperFdisRight} arch="upper" />
               </div>
               <div className="h-px bg-stone-200 mx-8" />
-              <div className="flex justify-center items-center gap-2">
-                <ToothRow fdis={lowerFdisLeft} />
-                <div className="w-px h-8 bg-stone-200" />
-                <ToothRow fdis={lowerFdisRight} />
+              <div className="flex justify-center items-start gap-3 sm:gap-4 pt-3">
+                <ToothRow fdis={lowerFdisLeft} arch="lower" />
+                <div className="w-px h-10 bg-stone-200 self-start" />
+                <ToothRow fdis={lowerFdisRight} arch="lower" />
               </div>
               <div className="text-center text-[9px] uppercase tracking-wider text-stone-400">Lower</div>
             </div>
@@ -331,7 +602,8 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           chartId={chartRes.chart.id}
           fdi={selectedFdi}
           existing={teethByFdi[selectedFdi]}
-          onClose={() => setSelectedFdi(null)}
+          initialSurface={initialSurface}
+          onClose={() => { setSelectedFdi(null); setInitialSurface(null); }}
           onSaved={() => qc.invalidateQueries({ queryKey: ["dental-chart", patientId] })}
         />
       )}
@@ -346,11 +618,12 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 // ───────── tooth editor panel ─────────
 
 function ToothPanel({
-  chartId, fdi, existing, onClose, onSaved,
+  chartId, fdi, existing, initialSurface, onClose, onSaved,
 }: {
   chartId: string;
   fdi: number;
   existing?: ToothRecord;
+  initialSurface?: Surface | null;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -474,7 +747,7 @@ function ToothPanel({
                 const data = surfaces[s] ?? {};
                 const hasData = data.condition || data.treatment || data.plannedTreatment || data.completedTreatment || data.notes;
                 return (
-                  <details key={s} className="bg-stone-50 rounded-lg border border-stone-200" open={!!hasData}>
+                  <details key={s} className="bg-stone-50 rounded-lg border border-stone-200" open={!!hasData || initialSurface === s}>
                     <summary className="px-3 py-2 cursor-pointer text-[11px] font-semibold text-stone-700 flex items-center justify-between select-none">
                       <span>{SURFACE_LABELS[s]}</span>
                       {hasData && <span className="text-[9px] text-blue-500 font-normal">●</span>}
