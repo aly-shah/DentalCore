@@ -1,38 +1,33 @@
 import { NextResponse } from "next/server";
 import { authenticate, createToken } from "@/lib/auth";
 import { loginSchema, validate } from "@/lib/validations";
-
 import { logger } from "@/lib/logger";
+import { rateLimit, resetRateLimit } from "@/lib/redis";
+
 const COOKIE_NAME = "dentacore-session";
 const SESSION_DURATION = 60 * 60 * 24 * 7; // 7 days
 
-const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 const MAX_ATTEMPTS = 5;
 const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const RETRY_AFTER_SECONDS = Math.floor(WINDOW_MS / 1000);
 
 function getClientIP(request: Request): string {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    request.headers.get("x-real-ip") || "unknown";
-}
-
-function checkRateLimit(ip: string): boolean {
-  const now = Date.now();
-  const entry = loginAttempts.get(ip);
-  if (!entry || now > entry.resetAt) {
-    loginAttempts.set(ip, { count: 1, resetAt: now + WINDOW_MS });
-    return true;
-  }
-  entry.count++;
-  return entry.count <= MAX_ATTEMPTS;
+  return (
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    request.headers.get("x-real-ip") ||
+    "unknown"
+  );
 }
 
 export async function POST(request: Request) {
   try {
     const ip = getClientIP(request);
-    if (!checkRateLimit(ip)) {
+    const limit = await rateLimit(`login:ip:${ip}`, MAX_ATTEMPTS, WINDOW_MS);
+    if (!limit.allowed) {
+      const retryAfter = Math.ceil(limit.resetMs / 1000) || RETRY_AFTER_SECONDS;
       return NextResponse.json(
-        { success: false, error: "Too many login attempts. Try again in 15 minutes." },
-        { status: 429, headers: { "Retry-After": "900" } }
+        { success: false, error: "Too many login attempts. Try again later." },
+        { status: 429, headers: { "Retry-After": String(retryAfter) } }
       );
     }
 
@@ -52,7 +47,7 @@ export async function POST(request: Request) {
     }
 
     // Clear rate limit on success
-    loginAttempts.delete(ip);
+    await resetRateLimit(`login:ip:${ip}`);
 
     const token = await createToken(user);
     const response = NextResponse.json({ success: true, data: { user } });
