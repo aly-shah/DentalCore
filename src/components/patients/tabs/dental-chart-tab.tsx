@@ -319,7 +319,9 @@ function ToothSVG({ fdi, arch, status, surfaces, selected, label, onClickTooth, 
       <svg
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         preserveAspectRatio="xMidYMid meet"
-        className="overflow-visible block h-14 sm:h-16 md:h-20 w-auto"
+        width={VB_W * 0.7}
+        height={VB_H * 0.7}
+        className="overflow-visible block"
       >
         {/* ────── Side view (anatomical) ────── */}
         <g transform={`translate(${(VB_W - sideW) / 2}, ${sideTop})`}>
@@ -1506,7 +1508,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
   function ToothRow({ fdis, arch }: { fdis: number[]; arch: "upper" | "lower" }) {
     return (
-      <div className={cn("flex gap-1 sm:gap-1.5", arch === "upper" ? "items-end" : "items-start")}>
+      <div className={cn("flex gap-px", arch === "upper" ? "items-end" : "items-start")}>
         {fdis.map((fdi) => <Tooth key={fdi} fdi={fdi} arch={arch} />)}
       </div>
     );
@@ -1749,12 +1751,12 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
               </div>
 
               {/* Upper arch — side view on top, occlusal on bottom */}
-              <div className="flex justify-center items-end gap-2 sm:gap-3 pt-2">
-                <div className="flex gap-0.5 sm:gap-1 items-end">
+              <div className="flex justify-center items-end gap-1.5 pt-2">
+                <div className="flex items-end">
                   <ToothRow fdis={upperFdisLeft} arch="upper" />
                 </div>
                 <div className="w-px self-stretch border-l border-dashed border-stone-300" />
-                <div className="flex gap-0.5 sm:gap-1 items-end">
+                <div className="flex items-end">
                   <ToothRow fdis={upperFdisRight} arch="upper" />
                 </div>
               </div>
@@ -1769,12 +1771,12 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
               </div>
 
               {/* Lower arch — occlusal on top, side view on bottom */}
-              <div className="flex justify-center items-start gap-2 sm:gap-3 pb-2">
-                <div className="flex gap-0.5 sm:gap-1 items-start">
+              <div className="flex justify-center items-start gap-1.5 pb-2">
+                <div className="flex items-start">
                   <ToothRow fdis={lowerFdisLeft} arch="lower" />
                 </div>
                 <div className="w-px self-stretch border-l border-dashed border-stone-300" />
-                <div className="flex gap-0.5 sm:gap-1 items-start">
+                <div className="flex items-start">
                   <ToothRow fdis={lowerFdisRight} arch="lower" />
                 </div>
               </div>
