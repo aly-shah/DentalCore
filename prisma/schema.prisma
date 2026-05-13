@@ -168,6 +168,8 @@ model User {
   orthoCases          OrthoCase[]        @relation("OrthoCaseDoctor")
   refundsProcessed    Refund[]           @relation("RefundProcessedBy")
   refundsApproved     Refund[]           @relation("RefundApprovedBy")
+  documentsUploaded   PatientDocument[]  @relation("DocumentUploadedBy")
+  communicationsSent  CommunicationLog[] @relation("CommunicationSentBy")
 
   @@index([tenantId])
 }
@@ -183,7 +185,7 @@ model Patient {
   email              String?
   phone              String?
   dateOfBirth        DateTime?
-  gender             String    @default("OTHER")
+  gender             Gender    @default(OTHER)
   nationality        String?
   address            String?
   city               String?
@@ -213,7 +215,7 @@ model Patient {
   allergies         Allergy[]
   tags              PatientTag[]
   appointments      Appointment[]
-  notes_records     ConsultationNote[]
+  consultationNotes ConsultationNote[]
   procedures        Procedure[]
   prescriptions     Prescription[]
   labTests          LabTest[]
@@ -232,8 +234,8 @@ model Patient {
   toothRecords      ToothRecord[]
   orthoCases        OrthoCase[]
   beforeAfterImages BeforeAfterImage[]
-  DentalChart       DentalChart[]
-  TreatmentPlan     TreatmentPlan[]
+  dentalCharts      DentalChart[]
+  treatmentPlans    TreatmentPlan[]
 
   @@index([tenantId])
 }
@@ -269,9 +271,9 @@ model OrthoCase {
   doctorId  String?
   doctor    User?   @relation("OrthoCaseDoctor", fields: [doctorId], references: [id])
 
-  type   String @default("METAL") // METAL, CERAMIC, LINGUAL, CLEAR_ALIGNER, SELF_LIGATING
-  arches String @default("BOTH") // UPPER, LOWER, BOTH
-  status String @default("CONSULTATION") // CONSULTATION, RECORDS, PLANNING, ACTIVE, RETENTION, COMPLETED, CANCELLED
+  type   String          @default("METAL") // METAL, CERAMIC, LINGUAL, CLEAR_ALIGNER, SELF_LIGATING
+  arches String          @default("BOTH") // UPPER, LOWER, BOTH
+  status OrthoCaseStatus @default(CONSULTATION)
 
   chiefComplaint String?
   diagnosis      String?
@@ -323,6 +325,7 @@ model OrthoVisit {
 
 model ToothRecord {
   id        String       @id @default(cuid())
+  tenantId  String?
   patientId String
   patient   Patient      @relation(fields: [patientId], references: [id], onDelete: Cascade)
   chartId   String?
@@ -356,6 +359,7 @@ model ToothRecord {
   @@unique([patientId, fdi])
   @@index([patientId])
   @@index([chartId])
+  @@index([tenantId])
 }
 
 /// Versioned dental chart. A patient typically has one active chart with
@@ -423,33 +427,34 @@ model PatientTag {
 }
 
 model Appointment {
-  id               String    @id @default(cuid())
-  appointmentCode  String    @unique
+  id               String                   @id @default(cuid())
+  tenantId         String?
+  appointmentCode  String                   @unique
   patientId        String
-  patient          Patient   @relation(fields: [patientId], references: [id])
+  patient          Patient                  @relation(fields: [patientId], references: [id])
   doctorId         String
-  doctor           User      @relation("Doctor", fields: [doctorId], references: [id])
+  doctor           User                     @relation("Doctor", fields: [doctorId], references: [id])
   branchId         String
-  branch           Branch    @relation(fields: [branchId], references: [id])
+  branch           Branch                   @relation(fields: [branchId], references: [id])
   roomId           String?
-  room             Room?     @relation(fields: [roomId], references: [id])
+  room             Room?                    @relation(fields: [roomId], references: [id])
   date             DateTime
   startTime        String
   endTime          String
   durationMinutes  Int?
-  type             String    @default("CONSULTATION")
-  status           String    @default("SCHEDULED")
+  type             String                   @default("CONSULTATION")
+  status           AppointmentStatus        @default(SCHEDULED)
   notes            String?
-  priority         String    @default("NORMAL")
+  priority         String                   @default("NORMAL")
   waitlistPosition Int?
   checkinTime      DateTime?
   checkoutTime     DateTime?
-  workflowStage    String    @default("BOOKED")
+  workflowStage    AppointmentWorkflowStage @default(BOOKED)
   cancellationNote String?
   createdById      String
-  createdBy        User      @relation("CreatedBy", fields: [createdById], references: [id])
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  createdBy        User                     @relation("CreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
 
   consultationNote ConsultationNote?
   procedures       Procedure[]
@@ -465,10 +470,12 @@ model Appointment {
   @@index([patientId])
   @@index([status])
   @@index([roomId])
+  @@index([tenantId, date])
 }
 
 model ConsultationNote {
   id                String      @id @default(cuid())
+  tenantId          String?
   appointmentId     String      @unique
   appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   patientId         String
@@ -478,8 +485,8 @@ model ConsultationNote {
   chiefComplaint    String?
   symptoms          String?
   examination       String?
-  skinAssessment    String?
-  affectedAreas     String?
+  skinAssessment    String? // derm leftover — slated for removal once UI references drop
+  affectedAreas     String? // derm leftover — slated for removal
   conditionSeverity String?
   diagnosis         String?
   differentialDx    String?
@@ -492,6 +499,10 @@ model ConsultationNote {
   signedAt          DateTime?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
+
+  @@index([patientId, createdAt])
+  @@index([doctorId])
+  @@index([tenantId])
 }
 
 model Treatment {
@@ -519,6 +530,7 @@ model Treatment {
 
 model Procedure {
   id            String       @id @default(cuid())
+  tenantId      String?
   appointmentId String?
   appointment   Appointment? @relation(fields: [appointmentId], references: [id])
   patientId     String
@@ -530,13 +542,18 @@ model Procedure {
   notes         String?
   outcome       String?
   complications String?
-  beforeImages  String?
-  afterImages   String?
+  beforeImages  String? // legacy CSV — superseded by BeforeAfterImage; slated for removal
+  afterImages   String? // legacy CSV — superseded by BeforeAfterImage; slated for removal
   areasTreated  String?
   consentSigned Boolean      @default(false)
   settings      String?
   performedAt   DateTime     @default(now())
   createdAt     DateTime     @default(now())
+
+  @@index([patientId, performedAt])
+  @@index([appointmentId])
+  @@index([doctorId])
+  @@index([tenantId])
 }
 
 model Prescription {
@@ -553,6 +570,10 @@ model Prescription {
   updatedAt     DateTime     @updatedAt
 
   items PrescriptionItem[]
+
+  @@index([patientId, createdAt])
+  @@index([doctorId])
+  @@index([appointmentId])
 }
 
 model PrescriptionItem {
@@ -565,6 +586,8 @@ model PrescriptionItem {
   duration       String?
   route          String?
   instructions   String?
+
+  @@index([prescriptionId])
 }
 
 model LabTest {
@@ -591,43 +614,48 @@ model LabTest {
 }
 
 model PatientDocument {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   patientId      String
-  patient        Patient  @relation(fields: [patientId], references: [id])
+  patient        Patient      @relation(fields: [patientId], references: [id])
   name           String
-  type           String   @default("OTHER")
+  type           DocumentType @default(OTHER)
   mimeType       String?
   fileUrl        String
-  fileSize       Int      @default(0)
+  fileSize       Int          @default(0)
   uploadedById   String
+  uploadedBy     User?        @relation("DocumentUploadedBy", fields: [uploadedById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   uploadedByName String?
   notes          String?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
+
+  @@index([patientId, createdAt])
+  @@index([type])
 }
 
 model Invoice {
-  id            String       @id @default(cuid())
-  invoiceNumber String       @unique
+  id            String        @id @default(cuid())
+  tenantId      String?
+  invoiceNumber String        @unique
   patientId     String
-  patient       Patient      @relation(fields: [patientId], references: [id])
-  appointmentId String?      @unique
-  appointment   Appointment? @relation(fields: [appointmentId], references: [id])
+  patient       Patient       @relation(fields: [patientId], references: [id])
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
   branchId      String
-  branch        Branch       @relation(fields: [branchId], references: [id])
-  subtotal      Float        @default(0)
-  discount      Float        @default(0)
-  discountType  String       @default("FIXED")
-  tax           Float        @default(0)
-  total         Float        @default(0)
-  amountPaid    Float        @default(0)
-  balanceDue    Float        @default(0)
-  status        String       @default("DRAFT")
+  branch        Branch        @relation(fields: [branchId], references: [id])
+  subtotal      Float         @default(0)
+  discount      Float         @default(0)
+  discountType  String        @default("FIXED")
+  tax           Float         @default(0)
+  total         Float         @default(0)
+  amountPaid    Float         @default(0)
+  balanceDue    Float         @default(0)
+  status        InvoiceStatus @default(DRAFT)
   dueDate       DateTime?
   notes         String?
   createdById   String
-  createdBy     User         @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdBy     User          @relation("InvoiceCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
 
   items    InvoiceItem[]
   payments Payment[]
@@ -637,6 +665,7 @@ model Invoice {
   @@index([branchId, createdAt])
   @@index([status])
   @@index([dueDate])
+  @@index([tenantId])
 }
 
 model InvoiceItem {
@@ -651,19 +680,22 @@ model InvoiceItem {
 }
 
 model Payment {
-  id              String   @id @default(cuid())
+  id              String        @id @default(cuid())
   invoiceId       String
-  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice         Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   amount          Float
-  method          String   @default("CASH")
+  method          String        @default("CASH")
   reference       String?
   notes           String?
-  status          String   @default("COMPLETED")
+  status          PaymentStatus @default(COMPLETED)
   processedById   String
-  processedBy     User?    @relation("PaymentProcessedBy", fields: [processedById], references: [id])
+  processedBy     User?         @relation("PaymentProcessedBy", fields: [processedById], references: [id])
   processedByName String?
-  processedAt     DateTime @default(now())
-  createdAt       DateTime @default(now())
+  processedAt     DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+
+  @@index([invoiceId])
+  @@index([processedAt])
 }
 
 model Refund {
@@ -727,30 +759,33 @@ model PatientPackage {
   remainingSessions Json? // { [treatmentName]: count } — per-treatment session balances
   status            String    @default("ACTIVE")
   invoiceId         String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@index([patientId, status])
+  @@index([patientId, createdAt])
 }
 
 model Lead {
-  id                 String    @id @default(cuid())
+  id                 String     @id @default(cuid())
   tenantId           String?
-  tenant             Tenant?   @relation(fields: [tenantId], references: [id])
+  tenant             Tenant?    @relation(fields: [tenantId], references: [id])
   name               String
   phone              String
   email              String?
-  source             String    @default("CALL")
-  status             String    @default("NEW")
+  source             String     @default("CALL")
+  status             LeadStatus @default(NEW)
   interest           String?
   assignedToId       String?
-  assignedTo         User?     @relation(fields: [assignedToId], references: [id])
+  assignedTo         User?      @relation(fields: [assignedToId], references: [id])
   branchId           String
-  branch             Branch    @relation(fields: [branchId], references: [id])
+  branch             Branch     @relation(fields: [branchId], references: [id])
   notes              String?
   convertedPatientId String?
-  convertedPatient   Patient?  @relation("LeadConvertedPatient", fields: [convertedPatientId], references: [id])
+  convertedPatient   Patient?   @relation("LeadConvertedPatient", fields: [convertedPatientId], references: [id])
   callbackDate       DateTime?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
   callLogs CallLog[]
 
@@ -786,12 +821,16 @@ model CommunicationLog {
   subject    String?
   content    String
   sentById   String?
+  sentBy     User?    @relation("CommunicationSentBy", fields: [sentById], references: [id], onDelete: NoAction, onUpdate: NoAction)
   sentByName String?
   createdAt  DateTime @default(now())
+
+  @@index([patientId, createdAt])
 }
 
 model FollowUp {
   id            String       @id @default(cuid())
+  tenantId      String?
   patientId     String
   patient       Patient      @relation(fields: [patientId], references: [id])
   doctorId      String
@@ -809,27 +848,31 @@ model FollowUp {
   @@index([status, dueDate])
   @@index([patientId])
   @@index([doctorId, status])
+  @@index([tenantId, status])
 }
 
 model AITranscription {
-  id             String      @id @default(cuid())
-  appointmentId  String      @unique
-  appointment    Appointment @relation(fields: [appointmentId], references: [id])
+  id             String              @id @default(cuid())
+  appointmentId  String              @unique
+  appointment    Appointment         @relation(fields: [appointmentId], references: [id])
   patientId      String
-  patient        Patient     @relation(fields: [patientId], references: [id])
+  patient        Patient             @relation(fields: [patientId], references: [id])
   doctorId       String
-  doctor         User        @relation(fields: [doctorId], references: [id])
+  doctor         User                @relation(fields: [doctorId], references: [id])
   rawTranscript  String?
   structuredNote String?
   summary        String?
-  language       String?     @default("en")
-  status         String      @default("COMPLETED")
-  duration       Int         @default(0)
-  createdAt      DateTime    @default(now())
+  language       String?             @default("en")
+  status         TranscriptionStatus @default(COMPLETED)
+  duration       Int                 @default(0)
+  createdAt      DateTime            @default(now())
+
+  @@index([patientId, createdAt])
 }
 
 model Notification {
   id        String   @id @default(cuid())
+  tenantId  String?
   userId    String
   user      User     @relation(fields: [userId], references: [id])
   title     String
@@ -837,9 +880,14 @@ model Notification {
   type      String   @default("SYSTEM")
   isRead    Boolean  @default(false)
   link      String?
+  /// Dedup key for idempotent producers (cron, webhooks). When set, the
+  /// unique constraint prevents duplicate notifications per user.
+  dedupKey  String?
   createdAt DateTime @default(now())
 
+  @@unique([userId, dedupKey])
   @@index([userId, isRead, createdAt])
+  @@index([tenantId])
 }
 
 model Triage {
@@ -898,6 +946,7 @@ model Room {
 
 model AuditLog {
   id         String   @id @default(cuid())
+  tenantId   String?
   userId     String?
   user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   userName   String?
@@ -912,6 +961,7 @@ model AuditLog {
   @@index([userId, createdAt])
   @@index([entityType, entityId])
   @@index([createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model SkinHistory {
@@ -1028,17 +1078,6 @@ model Consent {
   createdAt DateTime  @default(now())
 }
 
-model Waitlist {
-  id        String   @id @default(cuid())
-  patientId String
-  doctorId  String?
-  branchId  String?
-  priority  String   @default("NORMAL")
-  note      String?
-  status    String   @default("ACTIVE")
-  createdAt DateTime @default(now())
-}
-
 model Setting {
   id       String  @id @default(cuid())
   tenantId String?
@@ -1066,8 +1105,7 @@ model TreatmentPlan {
   proposedById String // doctor user id
   acceptedById String? // who at the clinic recorded acceptance
 
-  status String @default("DRAFT")
-  // DRAFT / PROPOSED / ACCEPTED / IN_PROGRESS / COMPLETED / CANCELLED
+  status TreatmentPlanStatus @default(DRAFT)
 
   title     String?
   diagnosis String?
@@ -1293,9 +1331,101 @@ enum TreatmentPlanItemStatus {
 
 enum TreatmentPlanPhaseStatus {
   PENDING
+  ACCEPTED // accepted by patient but not yet started
   IN_PROGRESS
   COMPLETED
   SKIPPED
+}
+
+enum TreatmentPlanStatus {
+  DRAFT
+  PROPOSED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  CHECKED_IN
+  WAITING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum AppointmentWorkflowStage {
+  BOOKED
+  CHECKIN
+  CHECKOUT
+  BILLING
+  COMPLETED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+  VOID
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  FOLLOW_UP
+  BOOKED
+  CONVERTED
+  LOST
+}
+
+enum OrthoCaseStatus {
+  CONSULTATION
+  RECORDS
+  PLANNING
+  ACTIVE
+  RETENTION
+  COMPLETED
+  CANCELLED
+}
+
+enum TranscriptionStatus {
+  RECORDING
+  PROCESSING
+  COMPLETED
+  ACCEPTED
+  REJECTED
+  ERRORED
+}
+
+enum DocumentType {
+  REPORT
+  IMAGE
+  CONSENT
+  PRESCRIPTION
+  LAB_RESULT
+  BEFORE_AFTER
+  XRAY
+  OTHER
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
 }
 
 enum LeaveStatus {

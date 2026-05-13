@@ -85,17 +85,17 @@ async function main() {
   console.log(`  Rooms: ${mockRooms.length}`);
 
   for (const p of mockPatients) {
-    await prisma.patient.create({ data: { id: p.id, patientCode: p.patientCode, firstName: p.firstName, lastName: p.lastName, email: p.email, phone: p.phone, dateOfBirth: toDate(p.dateOfBirth), gender: p.gender as string, address: p.address, city: p.city, emergencyContact: p.emergencyContact, emergencyPhone: p.emergencyPhone, bloodType: p.bloodType, branchId: p.branchId, assignedDoctorId: p.assignedDoctorId, isActive: p.isActive, skinType: p.skinType, lastVisit: toDate(p.lastVisit), nextAppointment: toDate(p.nextAppointment), outstandingBalance: p.outstandingBalance, allergies: { create: (p.allergies || []).map((a) => ({ allergen: a })) } } });
+    await prisma.patient.create({ data: { id: p.id, patientCode: p.patientCode, firstName: p.firstName, lastName: p.lastName, email: p.email, phone: p.phone, dateOfBirth: toDate(p.dateOfBirth), gender: p.gender as any, address: p.address, city: p.city, emergencyContact: p.emergencyContact, emergencyPhone: p.emergencyPhone, bloodType: p.bloodType, branchId: p.branchId, assignedDoctorId: p.assignedDoctorId, isActive: p.isActive, skinType: p.skinType, lastVisit: toDate(p.lastVisit), nextAppointment: toDate(p.nextAppointment), outstandingBalance: p.outstandingBalance, allergies: { create: (p.allergies || []).map((a) => ({ allergen: a })) } } });
   }
   console.log(`  Patients: ${mockPatients.length}`);
 
   for (const l of mockLeads) {
-    await prisma.lead.create({ data: { id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source as string, status: l.status as string, interest: l.interest, assignedToId: l.assignedToId, branchId: l.branchId, notes: l.notes, convertedPatientId: l.convertedPatientId, callbackDate: toDate(l.callbackDate) } });
+    await prisma.lead.create({ data: { id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source as string, status: l.status as any, interest: l.interest, assignedToId: l.assignedToId, branchId: l.branchId, notes: l.notes, convertedPatientId: l.convertedPatientId, callbackDate: toDate(l.callbackDate) } });
   }
   console.log(`  Leads: ${mockLeads.length}`);
 
   for (const a of mockAppointments) {
-    await prisma.appointment.create({ data: { id: a.id, appointmentCode: a.appointmentCode, patientId: a.patientId, doctorId: a.doctorId, branchId: a.branchId, roomId: a.roomId, date: new Date(a.date), startTime: a.startTime, endTime: a.endTime, type: a.type as string, status: a.status as string, notes: a.notes, priority: a.priority as string, waitlistPosition: a.waitlistPosition, checkinTime: toDate(a.checkinTime), checkoutTime: toDate(a.checkoutTime), workflowStage: a.workflowStage as string, createdById: a.createdBy } });
+    await prisma.appointment.create({ data: { id: a.id, appointmentCode: a.appointmentCode, patientId: a.patientId, doctorId: a.doctorId, branchId: a.branchId, roomId: a.roomId, date: new Date(a.date), startTime: a.startTime, endTime: a.endTime, type: a.type as string, status: a.status as any, notes: a.notes, priority: a.priority as string, waitlistPosition: a.waitlistPosition, checkinTime: toDate(a.checkinTime), checkoutTime: toDate(a.checkoutTime), workflowStage: a.workflowStage as any, createdById: a.createdBy } });
   }
   console.log(`  Appointments: ${mockAppointments.length}`);
 
@@ -105,7 +105,7 @@ async function main() {
   console.log(`  Packages: ${mockPackages.length}`);
 
   for (const inv of mockInvoices) {
-    await prisma.invoice.create({ data: { id: inv.id, invoiceNumber: inv.invoiceNumber, patientId: inv.patientId, appointmentId: inv.appointmentId, branchId: inv.branchId, subtotal: inv.subtotal, discount: inv.discount, discountType: inv.discountType, tax: inv.tax, total: inv.total, status: inv.status as string, dueDate: toDate(inv.dueDate), notes: inv.notes, createdById: inv.createdById, items: { create: (inv.items || []).map((it) => ({ description: it.description, type: it.type, quantity: it.quantity, unitPrice: it.unitPrice, total: it.total })) } } });
+    await prisma.invoice.create({ data: { id: inv.id, invoiceNumber: inv.invoiceNumber, patientId: inv.patientId, appointmentId: inv.appointmentId, branchId: inv.branchId, subtotal: inv.subtotal, discount: inv.discount, discountType: inv.discountType, tax: inv.tax, total: inv.total, status: inv.status as any, dueDate: toDate(inv.dueDate), notes: inv.notes, createdById: inv.createdById, items: { create: (inv.items || []).map((it) => ({ description: it.description, type: it.type, quantity: it.quantity, unitPrice: it.unitPrice, total: it.total })) } } });
   }
   console.log(`  Invoices: ${mockInvoices.length}`);
 
@@ -140,7 +140,7 @@ async function main() {
   console.log(`  Triage: ${mockTriageRecords.length}`);
 
   for (const ai of mockAITranscriptions) {
-    await prisma.aITranscription.create({ data: { id: ai.id, appointmentId: ai.appointmentId, patientId: ai.patientId, doctorId: ai.doctorId, rawTranscript: ai.rawTranscript, structuredNote: ai.structuredNote ? JSON.stringify(ai.structuredNote) : null, summary: ai.summary, status: ai.status as string, duration: ai.duration } });
+    await prisma.aITranscription.create({ data: { id: ai.id, appointmentId: ai.appointmentId, patientId: ai.patientId, doctorId: ai.doctorId, rawTranscript: ai.rawTranscript, structuredNote: ai.structuredNote ? JSON.stringify(ai.structuredNote) : null, summary: ai.summary, status: ai.status as any, duration: ai.duration } });
   }
   console.log(`  AI transcripts: ${mockAITranscriptions.length}`);
 
@@ -150,7 +150,7 @@ async function main() {
   console.log(`  Audit logs: ${mockAuditLogs.length}`);
 
   for (const d of mockDocuments) {
-    await prisma.patientDocument.create({ data: { id: d.id, patientId: d.patientId, name: d.name, type: d.type as string, fileUrl: d.fileUrl, fileSize: d.fileSize, uploadedById: d.uploadedById, uploadedByName: d.uploadedByName, notes: d.notes } });
+    await prisma.patientDocument.create({ data: { id: d.id, patientId: d.patientId, name: d.name, type: d.type as any, fileUrl: d.fileUrl, fileSize: d.fileSize, uploadedById: d.uploadedById, uploadedByName: d.uploadedByName, notes: d.notes } });
   }
   console.log(`  Documents: ${mockDocuments.length}`);
 

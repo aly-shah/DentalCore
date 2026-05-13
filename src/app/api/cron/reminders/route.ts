@@ -68,26 +68,23 @@ export async function POST(request: Request) {
     });
 
     for (const appt of upcomingAppts) {
-      // Notify doctor
-      const existing = await prisma.notification.findFirst({
-        where: {
+      // Notify doctor — idempotent via dedupKey unique constraint.
+      const dedupKey = `appointment-tomorrow:${appt.appointmentCode}:${todayStr}`;
+      const result = await prisma.notification.upsert({
+        where: { userId_dedupKey: { userId: appt.doctorId, dedupKey } },
+        create: {
           userId: appt.doctorId,
-          title: { contains: appt.appointmentCode },
-          createdAt: { gte: new Date(todayStr) },
+          dedupKey,
+          title: `Tomorrow: ${appt.patient.firstName} ${appt.patient.lastName}`,
+          message: `${appt.type.replace("_", " ")} at ${appt.startTime} — ${appt.appointmentCode}`,
+          type: "APPOINTMENT",
+          link: `/calendar`,
         },
+        update: {},
       });
-      if (!existing) {
-        await prisma.notification.create({
-          data: {
-            userId: appt.doctorId,
-            title: `Tomorrow: ${appt.patient.firstName} ${appt.patient.lastName}`,
-            message: `${appt.type.replace("_", " ")} at ${appt.startTime} — ${appt.appointmentCode}`,
-            type: "APPOINTMENT",
-            link: `/calendar`,
-          },
-        });
-        created++;
-      }
+      // Prisma upsert doesn't distinguish create-vs-update; rough count
+      // via createdAt is fine for telemetry.
+      if (Date.now() - result.createdAt.getTime() < 5000) created++;
     }
 
     // 2. Overdue follow-up reminders
@@ -103,26 +100,20 @@ export async function POST(request: Request) {
     });
 
     for (const fu of overdueFollowUps) {
-      const existing = await prisma.notification.findFirst({
-        where: {
+      const dedupKey = `followup-overdue:${fu.id}:${todayStr}`;
+      const result = await prisma.notification.upsert({
+        where: { userId_dedupKey: { userId: fu.doctorId, dedupKey } },
+        create: {
           userId: fu.doctorId,
-          title: { contains: "Follow-up overdue" },
-          message: { contains: `${fu.patient.firstName}` },
-          createdAt: { gte: new Date(todayStr) },
+          dedupKey,
+          title: `Follow-up overdue: ${fu.patient.firstName} ${fu.patient.lastName}`,
+          message: `${fu.reason} — was due ${toClinicDay(fu.dueDate)}`,
+          type: "FOLLOW_UP",
+          link: `/follow-ups`,
         },
+        update: {},
       });
-      if (!existing) {
-        await prisma.notification.create({
-          data: {
-            userId: fu.doctorId,
-            title: `Follow-up overdue: ${fu.patient.firstName} ${fu.patient.lastName}`,
-            message: `${fu.reason} — was due ${toClinicDay(fu.dueDate)}`,
-            type: "FOLLOW_UP",
-            link: `/follow-ups`,
-          },
-        });
-        created++;
-      }
+      if (Date.now() - result.createdAt.getTime() < 5000) created++;
     }
 
     // 3. Package expiry reminders (expiring in 7 days)
@@ -139,26 +130,21 @@ export async function POST(request: Request) {
     });
 
     for (const pkg of expiringPackages) {
-      if (pkg.patient.assignedDoctorId) {
-        const existing = await prisma.notification.findFirst({
-          where: {
+      if (pkg.patient.assignedDoctorId && pkg.expiryDate) {
+        const dedupKey = `package-expiring:${pkg.id}:${todayStr}`;
+        const result = await prisma.notification.upsert({
+          where: { userId_dedupKey: { userId: pkg.patient.assignedDoctorId, dedupKey } },
+          create: {
             userId: pkg.patient.assignedDoctorId,
-            title: { contains: "Package expiring" },
-            createdAt: { gte: new Date(todayStr) },
+            dedupKey,
+            title: `Package expiring: ${pkg.patient.firstName} ${pkg.patient.lastName}`,
+            message: `Expires on ${toClinicDay(pkg.expiryDate)}`,
+            type: "SYSTEM",
+            link: `/patients`,
           },
+          update: {},
         });
-        if (!existing) {
-          await prisma.notification.create({
-            data: {
-              userId: pkg.patient.assignedDoctorId,
-              title: `Package expiring: ${pkg.patient.firstName} ${pkg.patient.lastName}`,
-              message: `Expires on ${toClinicDay(pkg.expiryDate)}`,
-              type: "SYSTEM",
-              link: `/patients`,
-            },
-          });
-          created++;
-        }
+        if (Date.now() - result.createdAt.getTime() < 5000) created++;
       }
     }
 

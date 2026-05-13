@@ -94,15 +94,17 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // Auto-generate patientCode
-    const lastPatient = await prisma.patient.findFirst({
-      orderBy: { patientCode: "desc" },
-      select: { patientCode: true },
-    });
-    const nextNum = lastPatient
-      ? parseInt(lastPatient.patientCode.replace("PT-", "")) + 1
-      : 1;
-    const patientCode = `PT-${String(nextNum).padStart(4, "0")}`;
+    // Auto-generate patientCode. Two concurrent POSTs can read the same
+    // "last" value and race for the same PT-NNNN; the @unique constraint
+    // catches it, so we retry a few times on P2002 before giving up.
+    async function nextPatientCode(): Promise<string> {
+      const last = await prisma.patient.findFirst({
+        orderBy: { patientCode: "desc" },
+        select: { patientCode: true },
+      });
+      const n = last ? parseInt(last.patientCode.replace("PT-", ""), 10) + 1 : 1;
+      return `PT-${String(n).padStart(4, "0")}`;
+    }
 
     // Validate required fields
     if (!body.firstName || !body.lastName || !body.phone || !body.dateOfBirth || !body.gender) {
@@ -125,10 +127,16 @@ export async function POST(request: Request) {
       branchId = defaultBranch.id;
     }
 
-    const patient = await prisma.patient.create({
-      data: {
-        patientCode,
-        firstName: body.firstName,
+    // Retry on P2002 (duplicate patientCode) to handle concurrent creates.
+    let patient: Awaited<ReturnType<typeof prisma.patient.create>> | null = null;
+    let lastError: unknown = null;
+    for (let attempt = 0; attempt < 5 && !patient; attempt++) {
+      const patientCode = await nextPatientCode();
+      try {
+        patient = await prisma.patient.create({
+          data: {
+            patientCode,
+            firstName: body.firstName,
         lastName: body.lastName,
         middleName: body.middleName || null,
         email: body.email || null,
@@ -150,15 +158,29 @@ export async function POST(request: Request) {
         consentGiven: body.consentGiven ?? false,
         isVip: body.isVip ?? false,
       },
-      include: {
-        assignedDoctor: {
-          select: { id: true, name: true, speciality: true },
-        },
-        branch: {
-          select: { id: true, name: true, code: true },
-        },
-      },
-    });
+          include: {
+            assignedDoctor: {
+              select: { id: true, name: true, speciality: true },
+            },
+            branch: {
+              select: { id: true, name: true, code: true },
+            },
+          },
+        });
+      } catch (e: unknown) {
+        lastError = e;
+        const code = (e as { code?: string })?.code;
+        if (code !== "P2002") break; // not a unique-constraint race — bail
+        // otherwise loop and try the next code
+      }
+    }
+    if (!patient) {
+      logger.api("POST", "/api/patients", lastError);
+      return NextResponse.json(
+        { success: false, error: "Failed to assign a unique patient code after retries" },
+        { status: 500 }
+      );
+    }
 
     await logAudit({
       userId: body.createdById || "system",
