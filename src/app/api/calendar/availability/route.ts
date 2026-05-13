@@ -19,9 +19,6 @@ function minutesToTime(mins: number): string {
   return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}`;
 }
 
-function getDayOfWeek(date: Date): string {
-  return ["SUNDAY", "MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY"][date.getDay()];
-}
 
 export async function GET(request: Request) {
   try {
@@ -49,7 +46,7 @@ export async function GET(request: Request) {
     });
 
     // Fetch schedules
-    const schedules = await prisma.doctorSchedule.findMany({
+    const schedules = await prisma.schedule.findMany({
       where: { ...(doctorId && { doctorId }), isActive: true },
       select: { doctorId: true, dayOfWeek: true, startTime: true, endTime: true, breakStart: true, breakEnd: true, slotMinutes: true },
     });
@@ -61,7 +58,7 @@ export async function GET(request: Request) {
       const date = new Date(today);
       date.setDate(today.getDate() + dayOffset);
       const dateStr = toClinicDay(date);
-      const dayOfWeek = getDayOfWeek(date);
+      const dayOfWeek = date.getDay(); // 0=Sunday..6=Saturday — matches Schedule.dayOfWeek
 
       // Skip if today and past clinic hours
       const nowMins = dayOffset === 0 ? today.getHours() * 60 + today.getMinutes() : 0;

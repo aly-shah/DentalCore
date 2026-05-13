@@ -77,12 +77,15 @@ export interface ToothFindingsResult {
 }
 
 async function ensureModelVersion() {
-  const existing = await prisma.aIModelVersion.findFirst({
-    where: { name: MODEL_NAME, modelId: MODEL_ID, promptVersion: PROMPT_VERSION },
-  });
-  if (existing) return existing;
-  return prisma.aIModelVersion.create({
-    data: {
+  return prisma.aIModelVersion.upsert({
+    where: {
+      name_modelId_promptVersion: {
+        name: MODEL_NAME,
+        modelId: MODEL_ID,
+        promptVersion: PROMPT_VERSION,
+      },
+    },
+    create: {
       name: MODEL_NAME,
       provider: "openai",
       modelId: MODEL_ID,
@@ -92,6 +95,7 @@ async function ensureModelVersion() {
       maxTokens: 1500,
       isActive: true,
     },
+    update: {},
   });
 }
 

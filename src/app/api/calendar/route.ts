@@ -122,8 +122,13 @@ export async function GET(request: Request) {
     });
     const leaves = rawLeaves.map((l) => ({ ...l, type: undefined as string | undefined }));
 
-    // BlockedSlot model isn't in the schema yet — degrade to empty list.
-    const blockedSlots: Array<{ id: string; doctorId: string | null; roomId: string | null; date: Date; startTime: string; endTime: string; type: string; reason: string | null }> = [];
+    const blockedSlots = await prisma.blockedSlot.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+        ...(doctorId && { doctorId }),
+      },
+      select: { id: true, doctorId: true, roomId: true, date: true, startTime: true, endTime: true, type: true, reason: true },
+    });
 
     // ---- Compute availability per date per doctor ----
     const calendarData: Record<string, {

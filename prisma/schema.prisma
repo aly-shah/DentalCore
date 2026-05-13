@@ -114,13 +114,14 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users    User[]
-  patients Patient[]
-  appts    Appointment[]
-  rooms    Room[]
-  leads    Lead[]
-  invoices Invoice[]
-  products Product[]
+  users        User[]
+  patients     Patient[]
+  appts        Appointment[]
+  rooms        Room[]
+  leads        Lead[]
+  invoices     Invoice[]
+  products     Product[]
+  blockedSlots BlockedSlot[]
 
   @@index([tenantId])
 }
@@ -163,7 +164,10 @@ model User {
   patientsAssigned    Patient[]
   schedules           Schedule[]
   leaves              DoctorLeave[]
+  blockedSlots        BlockedSlot[]      @relation("BlockedSlotDoctor")
   orthoCases          OrthoCase[]        @relation("OrthoCaseDoctor")
+  refundsProcessed    Refund[]           @relation("RefundProcessedBy")
+  refundsApproved     Refund[]           @relation("RefundApprovedBy")
 
   @@index([tenantId])
 }
@@ -455,6 +459,12 @@ model Appointment {
   aiTranscription  AITranscription?
   followUps        FollowUp[]
   triage           Triage?
+
+  @@index([date, doctorId])
+  @@index([branchId, date])
+  @@index([patientId])
+  @@index([status])
+  @@index([roomId])
 }
 
 model ConsultationNote {
@@ -575,6 +585,9 @@ model LabTest {
   completedAt   DateTime?
   notes         String?
   createdAt     DateTime     @default(now())
+
+  @@index([patientId])
+  @@index([status])
 }
 
 model PatientDocument {
@@ -619,6 +632,11 @@ model Invoice {
   items    InvoiceItem[]
   payments Payment[]
   refunds  Refund[]
+
+  @@index([patientId, status])
+  @@index([branchId, createdAt])
+  @@index([status])
+  @@index([dueDate])
 }
 
 model InvoiceItem {
@@ -659,8 +677,12 @@ model Refund {
   notes         String?
   status        String   @default("COMPLETED")
   processedById String?
+  processedBy   User?    @relation("RefundProcessedBy", fields: [processedById], references: [id])
   approvedById  String?
+  approvedBy    User?    @relation("RefundApprovedBy", fields: [approvedById], references: [id])
   createdAt     DateTime @default(now())
+
+  @@index([invoiceId])
 }
 
 model Package {
@@ -702,9 +724,11 @@ model PatientPackage {
   packageName       String
   purchaseDate      DateTime  @default(now())
   expiryDate        DateTime?
-  remainingSessions String?
+  remainingSessions Json? // { [treatmentName]: count } — per-treatment session balances
   status            String    @default("ACTIVE")
   invoiceId         String?
+
+  @@index([patientId, status])
 }
 
 model Lead {
@@ -731,6 +755,9 @@ model Lead {
   callLogs CallLog[]
 
   @@index([tenantId])
+  @@index([status, branchId])
+  @@index([assignedToId])
+  @@index([phone])
 }
 
 model CallLog {
@@ -778,6 +805,10 @@ model FollowUp {
   completedAt   DateTime?
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+
+  @@index([status, dueDate])
+  @@index([patientId])
+  @@index([doctorId, status])
 }
 
 model AITranscription {
@@ -807,6 +838,8 @@ model Notification {
   isRead    Boolean  @default(false)
   link      String?
   createdAt DateTime @default(now())
+
+  @@index([userId, isRead, createdAt])
 }
 
 model Triage {
@@ -858,6 +891,7 @@ model Room {
   updatedAt          DateTime  @updatedAt
 
   appointments Appointment[]
+  blockedSlots BlockedSlot[]
 
   @@index([tenantId])
 }
@@ -865,15 +899,19 @@ model Room {
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
-  user       User?    @relation(fields: [userId], references: [id])
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   userName   String?
   action     String
   module     String?
   entityType String?
   entityId   String?
-  details    String?
+  details    String? // JSON-serialized; kept as String for safe historical reads. Convert per-record when querying.
   ipAddress  String?
   createdAt  DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([entityType, entityId])
+  @@index([createdAt])
 }
 
 model SkinHistory {
@@ -930,7 +968,7 @@ model Schedule {
   id          String   @id @default(cuid())
   doctorId    String
   doctor      User     @relation(fields: [doctorId], references: [id])
-  dayOfWeek   Int
+  dayOfWeek   Int // 0=Sunday … 6=Saturday (matches Date.getDay())
   startTime   String
   endTime     String
   breakStart  String?
@@ -938,16 +976,44 @@ model Schedule {
   slotMinutes Int      @default(30)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
+
+  @@index([doctorId, dayOfWeek])
 }
 
 model DoctorLeave {
-  id        String   @id @default(cuid())
+  id        String      @id @default(cuid())
   doctorId  String
-  doctor    User     @relation(fields: [doctorId], references: [id])
+  doctor    User        @relation(fields: [doctorId], references: [id])
   startDate DateTime
   endDate   DateTime
   reason    String?
+  status    LeaveStatus @default(APPROVED)
+  createdAt DateTime    @default(now())
+
+  @@index([doctorId, startDate])
+}
+
+/// Doctor- or room-level time blocks (lunch break, vacation override,
+/// scheduled meeting, equipment maintenance). Subtracts from availability.
+model BlockedSlot {
+  id        String   @id @default(cuid())
+  tenantId  String?
+  doctorId  String?
+  doctor    User?    @relation("BlockedSlotDoctor", fields: [doctorId], references: [id])
+  roomId    String?
+  room      Room?    @relation(fields: [roomId], references: [id])
+  branchId  String?
+  branch    Branch?  @relation(fields: [branchId], references: [id])
+  date      DateTime
+  startTime String
+  endTime   String
+  type      String   @default("BLOCK") // BLOCK / BREAK / MAINTENANCE / MEETING
+  reason    String?
   createdAt DateTime @default(now())
+
+  @@index([doctorId, date])
+  @@index([roomId, date])
+  @@index([branchId, date])
 }
 
 model Consent {
@@ -977,9 +1043,10 @@ model Setting {
   id       String  @id @default(cuid())
   tenantId String?
   tenant   Tenant? @relation(fields: [tenantId], references: [id])
-  key      String  @unique
+  key      String
   value    String
 
+  @@unique([tenantId, key])
   @@index([tenantId])
 }
 
@@ -1036,14 +1103,14 @@ model TreatmentPlan {
 }
 
 model TreatmentPlanPhase {
-  id             String        @id @default(cuid())
+  id             String                   @id @default(cuid())
   planId         String
-  plan           TreatmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  plan           TreatmentPlan            @relation(fields: [planId], references: [id], onDelete: Cascade)
   order          Int
   title          String
   description    String?
   estimatedWeeks Int?
-  status         String        @default("PENDING") // PENDING / IN_PROGRESS / COMPLETED / SKIPPED
+  status         TreatmentPlanPhaseStatus @default(PENDING)
 
   items TreatmentPlanItem[]
 
@@ -1072,8 +1139,7 @@ model TreatmentPlanItem {
   procedureId String? // populated when performed
   performedAt DateTime?
 
-  status String @default("PROPOSED")
-  // PROPOSED / ACCEPTED / IN_PROGRESS / COMPLETED / DECLINED
+  status TreatmentPlanItemStatus @default(PROPOSED)
 
   notes String?
 
@@ -1168,8 +1234,7 @@ model AISuggestionLog {
   promptTokens     Int?
   completionTokens Int?
 
-  status String @default("PROPOSED")
-  // PROPOSED / ACCEPTED / REJECTED / EXPIRED / ERRORED
+  status AISuggestionStatus @default(PROPOSED)
 
   acceptedEntityType String?
   acceptedEntityId   String?
@@ -1201,4 +1266,41 @@ model AISuggestionFeedback {
   createdAt        DateTime        @default(now())
 
   @@index([suggestionLogId])
+}
+
+// =====================================================================
+// Enums — converted from stringly-typed status fields. Adding new values
+// here is a schema migration, which is the intent: callers can no longer
+// silently write an unsupported status (e.g., SKIPPED).
+// =====================================================================
+
+enum AISuggestionStatus {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+  ERRORED
+}
+
+enum TreatmentPlanItemStatus {
+  PROPOSED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  DECLINED
+  SKIPPED
+}
+
+enum TreatmentPlanPhaseStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  DECLINED
+  CANCELLED
 }

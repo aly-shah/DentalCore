@@ -175,7 +175,7 @@ async function main() {
   console.log(`  Prescriptions: ${mockPrescriptions.length}`);
 
   for (const pp of mockPatientPackages) {
-    await prisma.patientPackage.create({ data: { id: pp.id, patientId: pp.patientId, packageId: pp.packageId, packageName: pp.packageName, purchaseDate: new Date(pp.purchaseDate), expiryDate: toDate(pp.expiryDate), remainingSessions: JSON.stringify(pp.remainingSessions), status: pp.status as string, invoiceId: pp.invoiceId } });
+    await prisma.patientPackage.create({ data: { id: pp.id, patientId: pp.patientId, packageId: pp.packageId, packageName: pp.packageName, purchaseDate: new Date(pp.purchaseDate), expiryDate: toDate(pp.expiryDate), remainingSessions: pp.remainingSessions ?? undefined, status: pp.status as string, invoiceId: pp.invoiceId } });
   }
   console.log(`  Patient packages: ${mockPatientPackages.length}`);
 
