@@ -760,7 +760,7 @@ model PatientPackage {
   status            String    @default("ACTIVE")
   invoiceId         String?
   createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  updatedAt         DateTime  @default(now()) @updatedAt
 
   @@index([patientId, status])
   @@index([patientId, createdAt])
