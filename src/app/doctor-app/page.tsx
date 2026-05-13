@@ -20,6 +20,11 @@ import { useAuth } from "@/lib/auth-context";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { usePatients } from "@/hooks/use-queries";
 import { getClinicToday } from "@/lib/utils";
+import {
+  PatientSummaryView,
+  PatientActionBar,
+  usePatientSummary,
+} from "./patient-summary-view";
 
 /* ───────── helpers ───────── */
 type Apt = Record<string, unknown>;
@@ -188,7 +193,11 @@ function NotADoctor({
 /* ───────── the app ───────── */
 function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () => Promise<void> }) {
   const [view, setView] = useState<"today" | "schedule" | "patients">("today");
+  const [activePatientId, setActivePatientId] = useState<string | null>(null);
   const today = getClinicToday();
+
+  const openPatient = (pid: string) => setActivePatientId(pid);
+  const closePatient = () => setActivePatientId(null);
 
   const { data: appts = [] } = useQuery({
     queryKey: ["doctor-app", "appts", today],
@@ -200,6 +209,12 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
     },
     refetchInterval: 60_000,
   });
+
+  // Load patient summary metadata once (so the action bar knows phone +
+  // today's appt) — uses the same query key as the inner view for cache hit.
+  const summaryQuery = usePatientSummary(activePatientId);
+  const patientPhone = summaryQuery.data?.patient.phone ?? null;
+  const todayAppointmentId = summaryQuery.data?.todayAppt?.id ?? null;
 
   const isDone = (a: Apt) => DONE.includes(up(a.status));
   const isCx = (a: Apt) => CANCELLED.includes(up(a.status));
@@ -249,19 +264,33 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
 
       {/* content */}
       <div className="flex-1 overflow-y-auto">
-        {view === "today" && (
-          <TodayView upcoming={upcomingList} completed={completedList} onSearch={() => setView("patients")} />
+        {activePatientId ? (
+          <PatientSummaryView patientId={activePatientId} onBack={closePatient} />
+        ) : (
+          <>
+            {view === "today" && (
+              <TodayView upcoming={upcomingList} completed={completedList} onSearch={() => setView("patients")} onOpenPatient={openPatient} />
+            )}
+            {view === "schedule" && <ScheduleView appts={appts} onOpenPatient={openPatient} />}
+            {view === "patients" && <PatientsView onOpenPatient={openPatient} />}
+          </>
         )}
-        {view === "schedule" && <ScheduleView appts={appts} />}
-        {view === "patients" && <PatientsView />}
       </div>
 
-      {/* bottom tab bar */}
-      <nav className="shrink-0 border-t border-stone-200 bg-white grid grid-cols-3 pb-[env(safe-area-inset-bottom)]">
-        <TabBtn active={view === "today"} onClick={() => setView("today")} icon={<Activity className="w-5 h-5" />} label="Today" />
-        <TabBtn active={view === "schedule"} onClick={() => setView("schedule")} icon={<CalendarDays className="w-5 h-5" />} label="Schedule" />
-        <TabBtn active={view === "patients"} onClick={() => setView("patients")} icon={<UsersIcon className="w-5 h-5" />} label="Patients" />
-      </nav>
+      {/* bottom bar — swaps between 3-tab nav and contextual action bar */}
+      {activePatientId ? (
+        <PatientActionBar
+          patientId={activePatientId}
+          todayAppointmentId={todayAppointmentId}
+          phone={patientPhone}
+        />
+      ) : (
+        <nav className="shrink-0 border-t border-stone-200 bg-white grid grid-cols-3 pb-[env(safe-area-inset-bottom)]">
+          <TabBtn active={view === "today"} onClick={() => setView("today")} icon={<Activity className="w-5 h-5" />} label="Today" />
+          <TabBtn active={view === "schedule"} onClick={() => setView("schedule")} icon={<CalendarDays className="w-5 h-5" />} label="Schedule" />
+          <TabBtn active={view === "patients"} onClick={() => setView("patients")} icon={<UsersIcon className="w-5 h-5" />} label="Patients" />
+        </nav>
+      )}
     </div>
   );
 }
@@ -308,7 +337,7 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="px-4 py-6 text-center text-xs text-stone-400">{children}</div>;
 }
 
-function ApptRow({ a, done }: { a: Apt; done: boolean }) {
+function ApptRow({ a, done, onOpenPatient }: { a: Apt; done: boolean; onOpenPatient?: (pid: string) => void }) {
   const pid = aptPatientId(a);
   const name = aptPatientName(a);
   const code = aptPatientCode(a);
@@ -336,10 +365,10 @@ function ApptRow({ a, done }: { a: Apt; done: boolean }) {
     </>
   );
   const cls = "flex items-center gap-3 px-3.5 py-3";
-  return pid && !done ? (
-    <Link href={`/patients/${pid}`} className={`${cls} active:bg-stone-50`}>
+  return pid && !done && onOpenPatient ? (
+    <button onClick={() => onOpenPatient(pid)} className={`${cls} active:bg-stone-50 w-full text-left`}>
       {inner}
-    </Link>
+    </button>
   ) : (
     <div className={`${cls} ${done ? "" : "opacity-95"}`}>{inner}</div>
   );
@@ -349,10 +378,12 @@ function TodayView({
   upcoming,
   completed,
   onSearch,
+  onOpenPatient,
 }: {
   upcoming: Apt[];
   completed: Apt[];
   onSearch: () => void;
+  onOpenPatient: (pid: string) => void;
 }) {
   return (
     <div className="px-3 sm:px-4 py-3 space-y-4 max-w-3xl mx-auto w-full">
@@ -366,7 +397,7 @@ function TodayView({
         {upcoming.length === 0 ? (
           <Empty>No upcoming appointments today</Empty>
         ) : (
-          upcoming.map((a) => <ApptRow key={String(a.id)} a={a} done={false} />)
+          upcoming.map((a) => <ApptRow key={String(a.id)} a={a} done={false} onOpenPatient={onOpenPatient} />)
         )}
       </Section>
       <Section title="COMPLETED" count={completed.length} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
@@ -380,7 +411,7 @@ function TodayView({
   );
 }
 
-function ScheduleView({ appts }: { appts: Apt[] }) {
+function ScheduleView({ appts, onOpenPatient }: { appts: Apt[]; onOpenPatient: (pid: string) => void }) {
   return (
     <div className="px-3 sm:px-4 py-3 space-y-3 max-w-3xl mx-auto w-full">
       <div className="flex items-center gap-1.5 px-1 text-[11px] font-semibold tracking-wider text-stone-400">
@@ -412,9 +443,9 @@ function ScheduleView({ appts }: { appts: Apt[] }) {
               </>
             );
             return pid ? (
-              <Link key={String(a.id)} href={`/patients/${pid}`} className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50">
+              <button key={String(a.id)} onClick={() => onOpenPatient(pid)} className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left">
                 {inner}
-              </Link>
+              </button>
             ) : (
               <div key={String(a.id)} className="flex items-center gap-3 px-3.5 py-3">
                 {inner}
@@ -427,7 +458,7 @@ function ScheduleView({ appts }: { appts: Apt[] }) {
   );
 }
 
-function PatientsView() {
+function PatientsView({ onOpenPatient }: { onOpenPatient: (pid: string) => void }) {
   const [q, setQ] = useState("");
   const { data } = usePatients(q ? { search: q, limit: "30" } : { limit: "30" });
   const patients = ((data?.data ?? []) as Array<{
@@ -453,7 +484,11 @@ function PatientsView() {
           <Empty>No patients found</Empty>
         ) : (
           patients.map((p) => (
-            <Link key={p.id} href={`/patients/${p.id}`} className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50">
+            <button
+              key={p.id}
+              onClick={() => onOpenPatient(p.id)}
+              className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left"
+            >
               <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center text-xs font-semibold shrink-0">
                 {(p.firstName?.[0] || "") + (p.lastName?.[0] || "")}
               </div>
@@ -467,7 +502,7 @@ function PatientsView() {
                 </p>
               </div>
               <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
-            </Link>
+            </button>
           ))
         )}
       </div>
