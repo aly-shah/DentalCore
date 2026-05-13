@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { cn } from "@/lib/utils";
+import { AIFindingsPanel } from "./ai-findings-panel";
 
 // ───────── types ─────────
 
@@ -1366,6 +1367,7 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
     surfaces: Partial<Record<Surface, SurfaceData>>;
   };
   const [applyFromData, setApplyFromData] = useState<ToothCopyPayload | null>(null);
+  const [aiPanelOpen, setAiPanelOpen] = useState(false);
 
   const { data: chartRes, isLoading } = useQuery({
     queryKey: ["dental-chart", patientId],
@@ -1565,6 +1567,16 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           <Button size="sm" variant="outline" iconLeft={<History className="w-3.5 h-3.5" />} onClick={() => setShowHistory((v) => !v)}>
             History
           </Button>
+          {chartRes?.chart && (
+            <button
+              onClick={() => setAiPanelOpen(true)}
+              className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-white bg-gradient-to-r from-violet-500 via-fuchsia-500 to-pink-500 hover:shadow-md transition-all hover:-translate-y-px shadow-sm"
+              title="Analyze chart with AI"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              AI Analyze
+            </button>
+          )}
         </div>
       </div>
 
@@ -1805,6 +1817,14 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
       {showHistory && (
         <HistoryPanel history={history} onClose={() => setShowHistory(false)} />
+      )}
+
+      {aiPanelOpen && chartRes?.chart && (
+        <AIFindingsPanel
+          patientId={patientId}
+          chartId={chartRes.chart.id}
+          onClose={() => setAiPanelOpen(false)}
+        />
       )}
     </div>
   );
