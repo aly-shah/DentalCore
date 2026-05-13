@@ -316,7 +316,11 @@ function ToothSVG({ fdi, arch, status, surfaces, selected, label, onClickTooth, 
         missing && "opacity-40"
       )}
     >
-      <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={VB_W * 1.6} height={VB_H * 1.6} className="overflow-visible">
+      <svg
+        viewBox={`0 0 ${VB_W} ${VB_H}`}
+        preserveAspectRatio="xMidYMid meet"
+        className="overflow-visible block h-14 sm:h-16 md:h-20 w-auto"
+      >
         {/* ────── Side view (anatomical) ────── */}
         <g transform={`translate(${(VB_W - sideW) / 2}, ${sideTop})`}>
           {/* Status-tinted fill behind the outline so the whole tooth
@@ -1737,26 +1741,26 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
 
       {!isLoading && chartRes?.chart && viewMode === "CLASSIC" && (
         <>
-          <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-4 sm:p-6 overflow-x-auto">
-            <div className="min-w-fit mx-auto" style={{ maxWidth: "fit-content" }}>
+          <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-3 sm:p-4">
+            <div className="w-full mx-auto">
               {/* UPPER label */}
-              <div className="text-center text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-2">
+              <div className="text-center text-[10px] font-bold uppercase tracking-widest text-stone-500 mb-1.5">
                 UPPER
               </div>
 
               {/* Upper arch — side view on top, occlusal on bottom */}
-              <div className="flex justify-center items-end gap-5 sm:gap-6 pt-4">
-                <div className="flex gap-1.5 sm:gap-2 items-end">
+              <div className="flex justify-center items-end gap-2 sm:gap-3 pt-2">
+                <div className="flex gap-0.5 sm:gap-1 items-end">
                   <ToothRow fdis={upperFdisLeft} arch="upper" />
                 </div>
-                <div className="w-px h-28 sm:h-36 border-l border-dashed border-stone-300 self-stretch" />
-                <div className="flex gap-1.5 sm:gap-2 items-end">
+                <div className="w-px self-stretch border-l border-dashed border-stone-300" />
+                <div className="flex gap-0.5 sm:gap-1 items-end">
                   <ToothRow fdis={upperFdisRight} arch="upper" />
                 </div>
               </div>
 
               {/* Center horizontal divider with RIGHT / LINGUAL / LEFT labels */}
-              <div className="flex items-center justify-between gap-3 sm:gap-4 my-2 sm:my-3 px-1">
+              <div className="flex items-center justify-between gap-2 sm:gap-3 my-1.5 sm:my-2 px-1">
                 <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">RIGHT</span>
                 <div className="flex-1 h-px bg-stone-300" />
                 <span className="text-[10px] font-bold uppercase tracking-widest text-stone-500">LINGUAL</span>
@@ -1765,18 +1769,18 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
               </div>
 
               {/* Lower arch — occlusal on top, side view on bottom */}
-              <div className="flex justify-center items-start gap-5 sm:gap-6 pb-4">
-                <div className="flex gap-1.5 sm:gap-2 items-start">
+              <div className="flex justify-center items-start gap-2 sm:gap-3 pb-2">
+                <div className="flex gap-0.5 sm:gap-1 items-start">
                   <ToothRow fdis={lowerFdisLeft} arch="lower" />
                 </div>
-                <div className="w-px h-28 sm:h-36 border-l border-dashed border-stone-300 self-stretch" />
-                <div className="flex gap-1.5 sm:gap-2 items-start">
+                <div className="w-px self-stretch border-l border-dashed border-stone-300" />
+                <div className="flex gap-0.5 sm:gap-1 items-start">
                   <ToothRow fdis={lowerFdisRight} arch="lower" />
                 </div>
               </div>
 
               {/* LOWER label */}
-              <div className="text-center text-[10px] font-bold uppercase tracking-widest text-stone-500 mt-2">
+              <div className="text-center text-[10px] font-bold uppercase tracking-widest text-stone-500 mt-1.5">
                 LOWER
               </div>
             </div>
