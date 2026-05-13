@@ -225,13 +225,14 @@ export function Sidebar() {
 
   return (
     <>
-      {/* Mobile menu button — sized + positioned to sit inside the sticky
-          topbar's leading area, with a translucent background so content
-          passing underneath (e.g. image grids) stays visible through it. */}
+      {/* Mobile menu button — sits inside the sticky topbar's leading area.
+          z-30 keeps it above page content but BELOW drawers/modals (z-40)
+          so they cover it when open. Translucent so any image sitting in
+          the top-left of the page stays partially visible behind it. */}
       <button
         onClick={() => setMobileOpen(true)}
         aria-label="Open menu"
-        className="fixed top-3 left-3 z-50 md:hidden w-9 h-9 bg-white/70 backdrop-blur-md rounded-lg border border-blue-100/80 shadow-sm flex items-center justify-center text-stone-600 hover:bg-white/90 transition-colors cursor-pointer"
+        className="fixed top-3 left-3 z-[31] md:hidden w-9 h-9 bg-white/70 backdrop-blur-md rounded-lg border border-blue-100/80 shadow-sm flex items-center justify-center text-stone-600 hover:bg-white/90 transition-colors cursor-pointer"
       >
         <Menu className="w-4 h-4" />
       </button>
