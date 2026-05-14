@@ -76,8 +76,6 @@ export async function POST(
         painLevel: body.painLevel,
         notes: body.notes,
         skinObservations: body.skinObservations,
-        moistureLevel: body.moistureLevel,
-        oilinessLevel: body.oilinessLevel,
         urgencyLevel: body.urgencyLevel ?? "ROUTINE",
         recordedById: body.recordedById,
       },

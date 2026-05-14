@@ -57,8 +57,6 @@ export async function PUT(
         ...(body.notes !== undefined && { notes: body.notes }),
         ...(body.areasTreated !== undefined && { areasTreated: body.areasTreated }),
         ...(body.settings !== undefined && { settings: body.settings }),
-        ...(body.beforeImages !== undefined && { beforeImages: body.beforeImages }),
-        ...(body.afterImages !== undefined && { afterImages: body.afterImages }),
         ...(body.consentSigned !== undefined && { consentSigned: body.consentSigned }),
       },
     });

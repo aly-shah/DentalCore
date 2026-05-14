@@ -485,8 +485,6 @@ model ConsultationNote {
   chiefComplaint    String?
   symptoms          String?
   examination       String?
-  skinAssessment    String? // derm leftover — slated for removal once UI references drop
-  affectedAreas     String? // derm leftover — slated for removal
   conditionSeverity String?
   diagnosis         String?
   differentialDx    String?
@@ -542,8 +540,6 @@ model Procedure {
   notes         String?
   outcome       String?
   complications String?
-  beforeImages  String? // legacy CSV — superseded by BeforeAfterImage; slated for removal
-  afterImages   String? // legacy CSV — superseded by BeforeAfterImage; slated for removal
   areasTreated  String?
   consentSigned Boolean      @default(false)
   settings      String?
@@ -906,8 +902,6 @@ model Triage {
   height           Float?
   oxygenSaturation Int?
   painLevel        Int?
-  moistureLevel    String?
-  oilinessLevel    String?
   bmi              String?
   notes            String?
   skinObservations String?

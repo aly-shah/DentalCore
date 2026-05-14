@@ -20,30 +20,40 @@ import type { Treatment } from "@/types";
 import { formatCurrency } from "@/lib/utils";
 
 const categoryLabel: Record<string, string> = {
-  [TreatmentCategory.LASER]: "Laser",
-  [TreatmentCategory.CHEMICAL_PEEL]: "Peel",
-  [TreatmentCategory.FACIAL]: "Facial",
-  [TreatmentCategory.INJECTABLE]: "Injectable",
-  [TreatmentCategory.SURGICAL]: "Surgical",
-  [TreatmentCategory.OTHER]: "Other",
+  [TreatmentCategory.PREVENTIVE]:    "Preventive",
+  [TreatmentCategory.RESTORATIVE]:   "Restorative",
+  [TreatmentCategory.ENDODONTIC]:    "Endodontic",
+  [TreatmentCategory.PROSTHODONTIC]: "Prosthodontic",
+  [TreatmentCategory.PERIODONTIC]:   "Periodontic",
+  [TreatmentCategory.ORTHODONTIC]:   "Orthodontic",
+  [TreatmentCategory.SURGICAL]:      "Surgical",
+  [TreatmentCategory.COSMETIC]:      "Cosmetic",
+  [TreatmentCategory.DIAGNOSTIC]:    "Diagnostic",
+  [TreatmentCategory.OTHER]:         "Other",
 };
 
 const categoryBadge: Record<string, "primary" | "info" | "success" | "warning" | "danger" | "default" | "purple"> = {
-  [TreatmentCategory.LASER]: "info",
-  [TreatmentCategory.CHEMICAL_PEEL]: "warning",
-  [TreatmentCategory.FACIAL]: "success",
-  [TreatmentCategory.INJECTABLE]: "purple",
-  [TreatmentCategory.SURGICAL]: "danger",
-  [TreatmentCategory.OTHER]: "default",
+  [TreatmentCategory.PREVENTIVE]:    "success",
+  [TreatmentCategory.RESTORATIVE]:   "info",
+  [TreatmentCategory.ENDODONTIC]:    "danger",
+  [TreatmentCategory.PROSTHODONTIC]: "purple",
+  [TreatmentCategory.PERIODONTIC]:   "warning",
+  [TreatmentCategory.ORTHODONTIC]:   "primary",
+  [TreatmentCategory.SURGICAL]:      "danger",
+  [TreatmentCategory.COSMETIC]:      "purple",
+  [TreatmentCategory.DIAGNOSTIC]:    "default",
+  [TreatmentCategory.OTHER]:         "default",
 };
 
 const tabs = [
   { label: "All", value: "ALL" },
-  { label: "Laser", value: TreatmentCategory.LASER },
-  { label: "Peel", value: TreatmentCategory.CHEMICAL_PEEL },
-  { label: "Facial", value: TreatmentCategory.FACIAL },
-  { label: "Injectable", value: TreatmentCategory.INJECTABLE },
-  { label: "Other", value: "OTHER_ALL" },
+  { label: "Preventive",    value: TreatmentCategory.PREVENTIVE },
+  { label: "Restorative",   value: TreatmentCategory.RESTORATIVE },
+  { label: "Endodontic",    value: TreatmentCategory.ENDODONTIC },
+  { label: "Prosthodontic", value: TreatmentCategory.PROSTHODONTIC },
+  { label: "Surgical",      value: TreatmentCategory.SURGICAL },
+  { label: "Cosmetic",      value: TreatmentCategory.COSMETIC },
+  { label: "Other",         value: "OTHER_ALL" },
 ];
 
 export default function TreatmentsPage() {
@@ -76,7 +86,10 @@ export default function TreatmentsPage() {
     const matchesTab =
       activeTab === "ALL" ||
       (activeTab === "OTHER_ALL"
-        ? t.category === TreatmentCategory.OTHER || t.category === TreatmentCategory.SURGICAL
+        ? t.category === TreatmentCategory.OTHER ||
+          t.category === TreatmentCategory.PERIODONTIC ||
+          t.category === TreatmentCategory.ORTHODONTIC ||
+          t.category === TreatmentCategory.DIAGNOSTIC
         : t.category === activeTab);
     const matchesSearch =
       (t.name ?? "").toLowerCase().includes(q) ||

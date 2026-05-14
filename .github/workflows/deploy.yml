@@ -60,6 +60,9 @@ jobs:
             npx prisma generate
             npx prisma db push --skip-generate --accept-data-loss
 
+            echo ">>> tenant backfill (idempotent)"
+            npx tsx prisma/backfill-tenant.ts || echo "(backfill skipped — non-fatal)"
+
             echo ">>> next build"
             npm run build
 

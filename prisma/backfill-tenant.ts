@@ -66,17 +66,16 @@ async function main() {
     console.log(`   ✓ registered hostname: ${hostname}`);
   }
 
-  // 3. Backfill tenantId on every model that has the column
+  // 3. Backfill tenantId on every model that has the column.
+  // Phase A added it on: branch, user, patient, treatment, package, lead,
+  //                       room, product, setting.
+  // Phase B (current) extended it to clinical/financial entities.
   const models = [
-    "branch",
-    "user",
-    "patient",
-    "treatment",
-    "package",
-    "lead",
-    "room",
-    "product",
-    "setting",
+    // Phase A (top-level entities)
+    "branch", "user", "patient", "treatment", "package", "lead", "room", "product", "setting",
+    // Phase B (PHI / clinical)
+    "appointment", "invoice", "procedure", "consultationNote",
+    "auditLog", "notification", "followUp", "toothRecord",
   ] as const;
 
   let totalUpdated = 0;
@@ -86,7 +85,7 @@ async function main() {
       where: { tenantId: null },
       data: { tenantId },
     });
-    console.log(`   ✓ ${model.padEnd(12)} → backfilled ${result.count} rows`);
+    console.log(`   ✓ ${model.padEnd(17)} → backfilled ${result.count} rows`);
     totalUpdated += result.count;
   }
 

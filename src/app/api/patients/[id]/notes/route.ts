@@ -60,8 +60,6 @@ export async function POST(
         chiefComplaint: body.chiefComplaint,
         symptoms: body.symptoms,
         examination: body.examination,
-        skinAssessment: body.skinAssessment,
-        affectedAreas: body.affectedAreas ?? [],
         conditionSeverity: body.conditionSeverity,
         diagnosis: body.diagnosis,
         differentialDx: body.differentialDx,
