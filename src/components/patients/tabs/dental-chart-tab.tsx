@@ -2162,7 +2162,7 @@ function ToothPanel({
         aria-label={`Edit tooth ${fdi}`}
       >
         {/* ───── Header ───── */}
-        <header className="shrink-0 px-5 pt-5 pb-4 border-b border-stone-100" style={stagger(0)}>
+        <header className="shrink-0 pl-16 pr-5 sm:px-5 pt-5 pb-4 border-b border-stone-100" style={stagger(0)}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {/* Mini tooth icon */}

@@ -716,7 +716,7 @@ function CreatePlanDrawer({
         aria-label="New treatment plan"
       >
         {/* ───── Header ───── */}
-        <header className="shrink-0 px-5 pt-5 pb-3 border-b border-stone-200 bg-white" style={stagger(0)}>
+        <header className="shrink-0 pl-16 pr-5 sm:px-5 pt-5 pb-3 border-b border-stone-200 bg-white" style={stagger(0)}>
           <div className="flex items-start justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500 to-cyan-500 flex items-center justify-center shadow-md">
