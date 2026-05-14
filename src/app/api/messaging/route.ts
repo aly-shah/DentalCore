@@ -23,7 +23,10 @@ export async function POST(request: Request) {
     // Send via messaging service
     const result = await sendMessage({ to, message, type: type || "whatsapp" });
 
-    // Log the communication
+    // Log the communication. Caller is authenticated, so prefer the
+    // session user as the sender attribution. sentById is nullable in
+    // the schema (so null is fine), but if the route was explicitly
+    // told who sent it, use that.
     if (patientId) {
       await prisma.communicationLog.create({
         data: {
@@ -32,7 +35,8 @@ export async function POST(request: Request) {
           direction: "OUTBOUND",
           subject: subject || "Message sent",
           content: message,
-          sentById: body.sentById || (await prisma.user.findFirst({ where: { role: "ADMIN" }, select: { id: true } }))?.id || "",
+          sentById: body.sentById || auth.user.id,
+          sentByName: body.sentByName ?? auth.user.name ?? null,
         },
       });
     }

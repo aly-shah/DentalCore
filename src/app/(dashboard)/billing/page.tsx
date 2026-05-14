@@ -11,6 +11,7 @@ import {
   FileText,
   User,
   Download,
+  Printer,
 } from "lucide-react";
 import {
   Button,
@@ -222,6 +223,14 @@ export default function BillingPage() {
                     View
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.open(`/api/billing/invoices/${invoice.id}/print`, "_blank")}
+                  title="Print / Save as PDF"
+                >
+                  <Printer className="w-3.5 h-3.5" />
+                </Button>
               </div>
             </div>
           </Card>

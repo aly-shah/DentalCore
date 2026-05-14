@@ -5,6 +5,7 @@
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { sendMessage, appointmentReminder } from "@/lib/messaging";
 
 import { toClinicDay } from "@/lib/utils";
 import { logger } from "@/lib/logger";
@@ -55,14 +56,18 @@ export async function POST(request: Request) {
 
     let created = 0;
 
-    // 1. Appointment reminders (24h before)
+    // 1. Appointment reminders (24h before) — notify the doctor in-app AND
+    // send the patient an SMS / WhatsApp message via the configured
+    // gateway. messaging.ts gracefully falls back to console.log when no
+    // gateway is set (so non-prod environments are safe).
+    let messagesSent = 0;
     const upcomingAppts = await prisma.appointment.findMany({
       where: {
         date: new Date(tomorrowStr),
         status: { in: ["SCHEDULED", "CONFIRMED"] },
       },
       include: {
-        patient: { select: { firstName: true, lastName: true } },
+        patient: { select: { id: true, firstName: true, lastName: true, phone: true } },
         doctor: { select: { id: true, name: true } },
       },
     });
@@ -85,6 +90,41 @@ export async function POST(request: Request) {
       // Prisma upsert doesn't distinguish create-vs-update; rough count
       // via createdAt is fine for telemetry.
       if (Date.now() - result.createdAt.getTime() < 5000) created++;
+
+      // Send the patient an SMS/WhatsApp reminder if they have a phone
+      // number. Idempotent: we check for an existing CommunicationLog
+      // entry with the same dedup key in the subject line.
+      if (appt.patient.phone) {
+        const msgDedup = `appt-reminder:${appt.appointmentCode}:${todayStr}`;
+        const alreadySent = await prisma.communicationLog.findFirst({
+          where: { patientId: appt.patient.id, subject: msgDedup },
+          select: { id: true },
+        });
+        if (!alreadySent) {
+          const text = appointmentReminder(
+            appt.patient.firstName,
+            tomorrowStr,
+            appt.startTime,
+            appt.doctor.name
+          );
+          try {
+            const sendResult = await sendMessage({ to: appt.patient.phone, message: text });
+            await prisma.communicationLog.create({
+              data: {
+                patientId: appt.patient.id,
+                type: sendResult.channel === "sms" ? "SMS" : "WHATSAPP",
+                direction: "OUTBOUND",
+                subject: msgDedup,
+                content: text,
+                sentByName: "Reminder bot",
+              },
+            });
+            if (sendResult.success) messagesSent++;
+          } catch (err) {
+            logger.warn("Reminder send failed", { appointmentCode: appt.appointmentCode, err });
+          }
+        }
+      }
     }
 
     // 2. Overdue follow-up reminders
@@ -191,6 +231,7 @@ export async function POST(request: Request) {
       success: true,
       data: {
         remindersCreated: created,
+        messagesSent,
         appointmentReminders: upcomingAppts.length,
         overdueFollowUps: overdueFollowUps.length,
         expiringPackages: expiringPackages.length,

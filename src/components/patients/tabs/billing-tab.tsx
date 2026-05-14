@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Receipt, CreditCard, RotateCcw } from "lucide-react";
+import { Receipt, CreditCard, RotateCcw, Printer } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,6 +101,14 @@ export function BillingTab({ patientId }: { patientId: string }) {
                               <CreditCard className="w-3.5 h-3.5 text-blue-600" />
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => window.open(`/api/billing/invoices/${inv.id}/print`, "_blank")}
+                            title="Print / Save as PDF"
+                          >
+                            <Printer className="w-3.5 h-3.5 text-stone-600" />
+                          </Button>
                         </div>
                       </TableCell>
                     </TableRow>
