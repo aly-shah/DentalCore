@@ -56,9 +56,18 @@ jobs:
             echo ">>> npm ci"
             npm ci --legacy-peer-deps --no-audit --no-fund
 
-            echo ">>> prisma generate + db push"
+            echo ">>> prisma generate"
             npx prisma generate
-            npx prisma db push --skip-generate --accept-data-loss
+
+            # One-time baseline: tell Prisma that the existing schema
+            # (previously applied via db push) is "already applied".
+            # Idempotent after the first run — re-running errors out
+            # silently, which we swallow with || true.
+            echo ">>> prisma migrate baseline (idempotent)"
+            npx prisma migrate resolve --applied 20260514000000_baseline 2>/dev/null || true
+
+            echo ">>> prisma migrate deploy"
+            npx prisma migrate deploy
 
             echo ">>> tenant backfill (idempotent)"
             npx tsx prisma/backfill-tenant.ts || echo "(backfill skipped — non-fatal)"
