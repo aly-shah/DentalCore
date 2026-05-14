@@ -1,13 +1,18 @@
 /**
  * DentaCore ERP — Messaging Service
  * Sends WhatsApp and SMS messages via configured gateway.
- * Supports: WhatsApp Business API, Twilio, or custom SMS gateway.
+ * Supports: WhatsApp Business API, Baileys (QR-code session),
+ * Twilio, or a custom SMS gateway.
+ *
+ * Priority: Business API → Baileys (QR) → SMS → console-log fallback.
  */
+import { isWhatsAppReady, sendBaileysMessage } from "./whatsapp-baileys";
 
 const WHATSAPP_API_URL = process.env.WHATSAPP_API_URL;
 const WHATSAPP_API_TOKEN = process.env.WHATSAPP_API_TOKEN;
 const SMS_API_URL = process.env.SMS_API_URL;
 const SMS_API_KEY = process.env.SMS_API_KEY;
+const BAILEYS_ENABLED = process.env.WHATSAPP_BAILEYS_ENABLED === "1" || process.env.WHATSAPP_BAILEYS_ENABLED === "true";
 
 export interface MessagePayload {
   to: string;          // Phone number with country code
@@ -26,20 +31,36 @@ export interface MessageResult {
 
 /**
  * Send a message via the best available channel.
- * Priority: WhatsApp > SMS > Log only
+ * Priority: WhatsApp Business API → Baileys (QR) → SMS → console-log
+ *
+ * If the caller explicitly asks for `type: "sms"` we honour that and
+ * skip the WhatsApp paths.
  */
 export async function sendMessage(payload: MessagePayload): Promise<MessageResult> {
-  const channel = payload.type || (WHATSAPP_API_URL ? "whatsapp" : SMS_API_URL ? "sms" : "none");
+  const wantSms = payload.type === "sms";
 
-  if (channel === "whatsapp" && WHATSAPP_API_URL && WHATSAPP_API_TOKEN) {
+  // 1. WhatsApp Business API (preferred when configured — sanctioned + scalable)
+  if (!wantSms && WHATSAPP_API_URL && WHATSAPP_API_TOKEN) {
     return sendWhatsApp(payload);
   }
 
-  if (channel === "sms" && SMS_API_URL && SMS_API_KEY) {
+  // 2. Baileys QR-paired WhatsApp (only when explicitly enabled AND connected)
+  if (!wantSms && BAILEYS_ENABLED && isWhatsAppReady()) {
+    try {
+      const messageId = await sendBaileysMessage(payload.to, payload.message);
+      return { success: true, channel: "whatsapp", messageId };
+    } catch (err) {
+      // Fall through to SMS / log if Baileys fails on this message.
+      console.warn("[Baileys] send failed, falling through:", err);
+    }
+  }
+
+  // 3. SMS gateway
+  if (SMS_API_URL && SMS_API_KEY) {
     return sendSMS(payload);
   }
 
-  // No gateway configured — log the message
+  // 4. No gateway — log so non-prod environments aren't silently dropping messages
   console.log(`[Messaging] No gateway configured. Would send to ${payload.to}: ${payload.message}`);
   return { success: true, channel: "none", messageId: `log-${Date.now()}` };
 }

@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# WhatsApp (Baileys) auth state — paired session for the clinic phone.
+# Must NEVER be committed; treat as a credential.
+/.whatsapp-session/
+
 # vercel
 .vercel
 
