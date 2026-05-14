@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSession, type SessionUser } from "./auth";
+import { bypassTenantScope, setCurrentTenant } from "./tenant-context";
+import { prisma } from "./prisma";
 
 type Role = "SUPER_ADMIN" | "ADMIN" | "DOCTOR" | "RECEPTIONIST" | "BILLING" | "CALL_CENTER" | "ASSISTANT";
 
@@ -61,6 +63,26 @@ export async function requireAuth(options?: {
           { status: 403 }
         ),
       };
+    }
+  }
+
+  // Seed the per-request tenant context so the Prisma extension in
+  // src/lib/prisma.ts can auto-scope queries. Prefer the tenantId baked
+  // into the JWT session (new logins); fall back to a DB lookup for
+  // older sessions that don't carry the field yet.
+  if (typeof session.user.tenantId !== "undefined") {
+    setCurrentTenant(session.user.tenantId ?? null);
+  } else {
+    try {
+      const row = await bypassTenantScope(() =>
+        prisma.user.findUnique({
+          where: { id: session.user.id },
+          select: { tenantId: true },
+        })
+      );
+      setCurrentTenant(row?.tenantId ?? null);
+    } catch {
+      setCurrentTenant(null);
     }
   }
 

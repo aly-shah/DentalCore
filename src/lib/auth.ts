@@ -18,6 +18,9 @@ export interface SessionUser {
   role: string;
   branchId: string;
   branchName?: string;
+  /** Populated on new logins. Older JWTs may lack this; requireAuth
+   *  falls back to a DB lookup so old sessions still work. */
+  tenantId?: string | null;
 }
 
 export interface Session {
@@ -102,5 +105,6 @@ export async function authenticate(email: string, password: string): Promise<Ses
     role: user.role,
     branchId: user.branchId,
     branchName: user.branch.name,
+    tenantId: user.tenantId,
   };
 }
