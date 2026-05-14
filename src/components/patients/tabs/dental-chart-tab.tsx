@@ -29,39 +29,19 @@ import { Textarea } from "@/components/ui/textarea";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { cn } from "@/lib/utils";
 import { AIFindingsPanel } from "./ai-findings-panel";
+import {
+  effectiveStatus,
+  toothCategory,
+  parseChips,
+  joinChips,
+  type ToothStatus,
+  type Surface,
+  type SurfaceData,
+  type ToothRecord,
+  type ToothCategory,
+} from "./dental-chart/types";
 
 // ───────── types ─────────
-
-type ToothStatus =
-  | "HEALTHY" | "CARIES" | "FILLING" | "CROWN" | "BRIDGE" | "IMPLANT"
-  | "MISSING" | "ROOT_CANAL" | "EXTRACTION_NEEDED" | "MOBILITY" | "FRACTURE"
-  | "PROBLEM" | "UNDER_TREATMENT" | "TREATED";
-
-type Surface = "mesial" | "distal" | "occlusal" | "buccal" | "lingual";
-
-interface SurfaceData {
-  condition?: string;
-  treatment?: string;
-  plannedTreatment?: string;
-  completedTreatment?: string;
-  notes?: string;
-}
-
-interface ToothRecord {
-  id: string;
-  patientId: string;
-  chartId: string | null;
-  fdi: number;
-  status: ToothStatus;
-  conditions: string | null;
-  treatment: string | null;
-  plannedTreatment: string | null;
-  completedTreatment: string | null;
-  surfaces: Partial<Record<Surface, SurfaceData>> | null;
-  priority: "EMERGENCY" | "HIGH" | "MEDIUM" | "COSMETIC";
-  notes: string | null;
-  updatedAt: string;
-}
 
 interface ChartResponse {
   chart: { id: string; numberingSystem: string; dentition: string } | null;
@@ -142,67 +122,16 @@ const SURFACE_LABELS: Record<Surface, string> = {
 
 // ───────── anatomical tooth SVG ─────────
 
-type ToothCategory = "incisor" | "canine" | "premolar" | "molar";
+// effectiveStatus + toothCategory live in ./dental-chart/types so they
+// can be unit-tested without pulling in the React tree.
 
 /**
- * Derive the visual "effective" status from all data on the tooth.
+ * (Reference) effectiveStatus is imported from ./dental-chart/types.
  * Falls back to the explicit status when set, otherwise infers from
  * conditions text, surface data, or treatment fields.  Lets the chart
  * paint a tooth as "having a condition" even when the user only filled
  * the conditions/surfaces fields and never explicitly changed status.
  */
-function effectiveStatus(tooth: ToothRecord | undefined): ToothStatus {
-  if (!tooth) return "HEALTHY";
-  if (tooth.status && tooth.status !== "HEALTHY") return tooth.status as ToothStatus;
-
-  // Completed treatment → TREATED
-  if (tooth.completedTreatment?.trim()) return "TREATED";
-  for (const d of Object.values(tooth.surfaces ?? {})) {
-    if (d?.completedTreatment?.trim()) return "TREATED";
-  }
-
-  // Condition text → infer kind
-  const collectedText = [
-    tooth.conditions ?? "",
-    ...Object.values(tooth.surfaces ?? {}).map((d) => d?.condition ?? ""),
-  ].join(" ").toLowerCase();
-  if (collectedText.match(/cavit|caries|decay/))             return "CARIES";
-  if (collectedText.match(/fract|crack|chip/))               return "FRACTURE";
-  if (collectedText.match(/mobil/))                          return "MOBILITY";
-  if (collectedText.match(/abscess|infect|peri[a-z]*lesion/))return "PROBLEM";
-  if (collectedText.match(/erosion|attrit|abrasion/))        return "PROBLEM";
-  if (collectedText.match(/sensi/))                          return "PROBLEM";
-
-  // Planned treatment → flag as needs attention
-  if (tooth.plannedTreatment?.trim()) return "UNDER_TREATMENT";
-  for (const d of Object.values(tooth.surfaces ?? {})) {
-    if (d?.plannedTreatment?.trim()) return "UNDER_TREATMENT";
-  }
-
-  // Surface conditions (anything else) → generic PROBLEM
-  for (const d of Object.values(tooth.surfaces ?? {})) {
-    if (d?.condition?.trim()) return "PROBLEM";
-  }
-
-  return "HEALTHY";
-}
-
-function toothCategory(fdi: number): ToothCategory {
-  // Position within quadrant (1 = central incisor, 8 = third molar).
-  // For primary teeth (51-85): 1-2 incisors, 3 canine, 4-5 molars.
-  const last = fdi % 10;
-  const isPrimary = (fdi >= 51 && fdi <= 85);
-  if (isPrimary) {
-    if (last <= 2) return "incisor";
-    if (last === 3) return "canine";
-    return "molar";
-  }
-  if (last <= 2) return "incisor";
-  if (last === 3) return "canine";
-  if (last === 4 || last === 5) return "premolar";
-  return "molar"; // 6, 7, 8
-}
-
 /**
  * Surface fill color based on the tooth's surface data or top-level
  * status. If the surface has its own condition/treatment, paint that
@@ -1936,14 +1865,7 @@ function suggestTreatments(status: ToothStatus, cat: ToothCategory, hasSurfaceDa
   }
 }
 
-/** Parse a comma-separated string into chip array. */
-function parseChips(s: string): string[] {
-  if (!s) return [];
-  return s.split(",").map((x) => x.trim()).filter(Boolean);
-}
-function joinChips(chips: string[]): string {
-  return chips.join(", ");
-}
+// parseChips + joinChips live in ./dental-chart/types.
 
 function ToothPanel({
   chartId, fdi, existing, initialSurface, patientId, onClose, onSaved, onApplyToOthers,
