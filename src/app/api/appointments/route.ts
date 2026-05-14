@@ -71,49 +71,90 @@ export async function POST(request: Request) {
 
     const d = v.data;
 
-    const appointment = await prisma.$transaction(async (tx) => {
-      const count = await tx.appointment.count();
-      const appointmentCode = `APT-${String(count + 1).padStart(4, "0")}`;
+    /**
+     * Build the list of dates this request should create.
+     * - No recurrence: just the requested date.
+     * - WEEKLY:        every 1 week
+     * - BIWEEKLY:      every 2 weeks
+     * - MONTHLY:       every 4 weeks (rough — calendar-month math is left
+     *                  to the UI / a future refinement)
+     * - EVERY_N_WEEKS: caller-specified intervalWeeks
+     */
+    function buildDates(): Date[] {
+      const first = new Date(d.date);
+      if (!d.recurrence) return [first];
+      const stepWeeks =
+        d.recurrence.pattern === "WEEKLY"   ? 1 :
+        d.recurrence.pattern === "BIWEEKLY" ? 2 :
+        d.recurrence.pattern === "MONTHLY"  ? 4 :
+        Math.max(1, d.recurrence.intervalWeeks ?? 1);
+      const out: Date[] = [];
+      for (let i = 0; i < d.recurrence.count; i++) {
+        const dt = new Date(first);
+        dt.setDate(first.getDate() + i * stepWeeks * 7);
+        out.push(dt);
+      }
+      return out;
+    }
+    const dates = buildDates();
 
-      const appt = await tx.appointment.create({
-        data: {
-          appointmentCode,
-          patientId: d.patientId,
-          doctorId: d.doctorId,
-          branchId: d.branchId,
-          roomId: d.roomId || null,
-          date: new Date(d.date),
-          startTime: d.startTime,
-          endTime: d.endTime,
-          durationMinutes: d.durationMinutes || 30,
-          type: d.type || "CONSULTATION",
-          status: "SCHEDULED",
-          notes: d.notes || null,
-          priority: d.priority || "NORMAL",
-          workflowStage: "BOOKED",
-          createdById: auth.user.id,
-        },
-        include: {
-          patient: { select: { id: true, firstName: true, lastName: true, patientCode: true } },
-          doctor: { select: { id: true, name: true, speciality: true } },
-        },
-      });
+    const created = await prisma.$transaction(async (tx) => {
+      const baseCount = await tx.appointment.count();
+      const appts = [] as Awaited<ReturnType<typeof tx.appointment.create>>[];
+
+      for (let i = 0; i < dates.length; i++) {
+        const appointmentCode = `APT-${String(baseCount + i + 1).padStart(4, "0")}`;
+        const appt = await tx.appointment.create({
+          data: {
+            appointmentCode,
+            patientId: d.patientId,
+            doctorId: d.doctorId,
+            branchId: d.branchId,
+            roomId: d.roomId || null,
+            date: dates[i],
+            startTime: d.startTime,
+            endTime: d.endTime,
+            durationMinutes: d.durationMinutes || 30,
+            type: d.type || "CONSULTATION",
+            status: "SCHEDULED",
+            notes: d.notes || null,
+            priority: d.priority || "NORMAL",
+            workflowStage: "BOOKED",
+            createdById: auth.user.id,
+          },
+          include: {
+            patient: { select: { id: true, firstName: true, lastName: true, patientCode: true } },
+            doctor: { select: { id: true, name: true, speciality: true } },
+          },
+        });
+        appts.push(appt);
+      }
 
       await tx.auditLog.create({
         data: {
           userId: auth.user.id,
           action: "CREATE",
           module: "APPOINTMENT",
-          entityType: "Appointment",
-          entityId: appt.id,
-          details: JSON.stringify({ appointmentCode: appt.appointmentCode }),
+          entityType: appts.length > 1 ? "AppointmentSeries" : "Appointment",
+          entityId: appts[0].id,
+          details: JSON.stringify({
+            appointmentCode: appts[0].appointmentCode,
+            ...(appts.length > 1
+              ? { seriesSize: appts.length, recurrence: d.recurrence }
+              : {}),
+          }),
         },
       });
 
-      return appt;
+      return appts;
     });
 
-    return NextResponse.json({ success: true, data: appointment }, { status: 201 });
+    // Back-compat: for a single appointment, return `data` as the row
+    // (existing callers expect this). For a series, return the array.
+    return NextResponse.json(
+      { success: true, data: created.length === 1 ? created[0] : created },
+      { status: 201 }
+    );
   } catch (error) {
     logger.api("POST", "/api/appointments", error);
     return NextResponse.json(

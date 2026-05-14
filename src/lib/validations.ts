@@ -36,6 +36,16 @@ export const createAppointmentSchema = z.object({
   notes: z.string().max(2000).optional().nullable(),
   priority: z.enum(["NORMAL", "URGENT", "EMERGENCY"]).optional(),
   createdById: z.string().min(1).optional(),
+  /**
+   * Optional recurrence. When set, the endpoint creates N copies of the
+   * appointment at the specified interval. The first occurrence uses the
+   * `date` field above; subsequent occurrences add `intervalWeeks` to it.
+   */
+  recurrence: z.object({
+    pattern: z.enum(["WEEKLY", "BIWEEKLY", "MONTHLY", "EVERY_N_WEEKS"]),
+    intervalWeeks: z.number().int().min(1).max(52).optional(),
+    count: z.number().int().min(2).max(52),
+  }).optional(),
 });
 
 export const createPatientSchema = z.object({

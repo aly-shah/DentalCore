@@ -62,6 +62,12 @@ export function CreateAppointmentModal({ isOpen, onClose, preselectedPatientId }
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
+  // Recurring series
+  const [recurring, setRecurring] = useState(false);
+  const [recurrencePattern, setRecurrencePattern] = useState<"WEEKLY" | "BIWEEKLY" | "MONTHLY" | "EVERY_N_WEEKS">("WEEKLY");
+  const [recurrenceCount, setRecurrenceCount] = useState("4");
+  const [recurrenceIntervalWeeks, setRecurrenceIntervalWeeks] = useState("4");
+
   // Fetch treatments/procedures from DB
   const { data: treatmentsRes } = useTreatments();
   const treatments = ((treatmentsRes?.data || []) as { id: string; name: string; category: string; duration: number; basePrice: number }[]);
@@ -110,6 +116,8 @@ export function CreateAppointmentModal({ isOpen, onClose, preselectedPatientId }
     setDoctorId(""); setDate(getClinicToday());
     setTime(""); setDuration("30"); setRoomId("");
     setNotes(""); setError(""); setSuccess(false);
+    setRecurring(false); setRecurrencePattern("WEEKLY");
+    setRecurrenceCount("4"); setRecurrenceIntervalWeeks("4");
   };
 
   const handleSubmit = async () => {
@@ -135,6 +143,15 @@ export function CreateAppointmentModal({ isOpen, onClose, preselectedPatientId }
         type, priority: "NORMAL",
         notes: notes.trim() || undefined,
         createdById: user?.id || undefined,
+        ...(recurring ? {
+          recurrence: {
+            pattern: recurrencePattern,
+            count: Math.max(2, Math.min(52, parseInt(recurrenceCount, 10) || 2)),
+            ...(recurrencePattern === "EVERY_N_WEEKS"
+              ? { intervalWeeks: Math.max(1, Math.min(52, parseInt(recurrenceIntervalWeeks, 10) || 4)) }
+              : {}),
+          },
+        } : {}),
       });
 
       const doc = doctors.find((d) => d.id === doctorId);
@@ -169,7 +186,11 @@ export function CreateAppointmentModal({ isOpen, onClose, preselectedPatientId }
         <>
           <Button variant="outline" onClick={handleClose}>Cancel</Button>
           <Button onClick={handleSubmit} disabled={createAppointment.isPending || !patientId || !doctorId || !time}>
-            {createAppointment.isPending ? "Booking..." : "Book Appointment"}
+            {createAppointment.isPending
+              ? "Booking..."
+              : recurring
+                ? `Book ${recurrenceCount}× series`
+                : "Book Appointment"}
           </Button>
         </>
       )}
@@ -320,6 +341,62 @@ export function CreateAppointmentModal({ isOpen, onClose, preselectedPatientId }
 
           {/* Notes */}
           <Input placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} />
+
+          {/* Recurring series */}
+          <div className="rounded-xl border border-stone-200 bg-stone-50/40 p-3 space-y-2.5">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={recurring}
+                onChange={(e) => setRecurring(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-xs font-bold text-stone-700">Repeat as a series</span>
+              <span className="text-[10px] text-stone-400 ml-auto">Creates multiple appointments at once</span>
+            </label>
+
+            {recurring && (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1 block">Pattern</label>
+                  <select
+                    value={recurrencePattern}
+                    onChange={(e) => setRecurrencePattern(e.target.value as typeof recurrencePattern)}
+                    className="w-full px-2 py-1.5 text-xs rounded-md border-2 border-stone-200 focus:border-blue-400 focus:outline-none bg-white"
+                  >
+                    <option value="WEEKLY">Weekly</option>
+                    <option value="BIWEEKLY">Every 2 weeks</option>
+                    <option value="MONTHLY">Monthly (4 wks)</option>
+                    <option value="EVERY_N_WEEKS">Custom interval</option>
+                  </select>
+                </div>
+                {recurrencePattern === "EVERY_N_WEEKS" && (
+                  <div>
+                    <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1 block">Every N weeks</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={52}
+                      value={recurrenceIntervalWeeks}
+                      onChange={(e) => setRecurrenceIntervalWeeks(e.target.value)}
+                      className="w-full px-2 py-1.5 text-xs rounded-md border-2 border-stone-200 focus:border-blue-400 focus:outline-none bg-white"
+                    />
+                  </div>
+                )}
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1 block">Occurrences</label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={52}
+                    value={recurrenceCount}
+                    onChange={(e) => setRecurrenceCount(e.target.value)}
+                    className="w-full px-2 py-1.5 text-xs rounded-md border-2 border-stone-200 focus:border-blue-400 focus:outline-none bg-white"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </SlidePanel>

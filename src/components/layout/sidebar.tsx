@@ -82,6 +82,7 @@ const extraRoutes: Record<string, { label: string; href: string; icon: string; a
   "/admin/blocks":    [{ label: "Calendar Blocks", href: "/admin/blocks", icon: "Clock", afterModule: "MOD-APPOINTMENT", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR"] }],
   "/admin/ai-usage":  [{ label: "AI Usage", href: "/admin/ai-usage", icon: "Sparkles", afterModule: "MOD-AI-TRANSCRIPTION", roles: ["ADMIN", "SUPER_ADMIN"] }],
   "/admin/audit":     [{ label: "Audit Log", href: "/admin/audit", icon: "Shield", afterModule: "MOD-ADMIN", roles: ["ADMIN", "SUPER_ADMIN"] }],
+  "/admin/tenants":   [{ label: "Tenants", href: "/admin/tenants", icon: "Building2", afterModule: "MOD-ADMIN", roles: ["SUPER_ADMIN"] }],
   "/pharmacy": [{ label: "Dental Supplies", href: "/pharmacy", icon: "Pill", afterModule: "MOD-BILLING", roles: ["ADMIN", "SUPER_ADMIN", "BILLING"] }],
 };
 
