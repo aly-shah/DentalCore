@@ -13,6 +13,7 @@ import {
   Check, Trash2, Clock, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AIFeedbackWidget } from "@/components/ai/feedback-widget";
 
 interface ToothFinding {
   fdi: number;
@@ -56,6 +57,7 @@ export function AIFindingsPanel({
   const [dismissedFdis, setDismissedFdis] = useState<Set<number>>(new Set());
   const [appliedFdis, setAppliedFdis] = useState<Set<number>>(new Set());
   const [meta, setMeta] = useState<{ modelId: string; costCents: number; latencyMs: number } | null>(null);
+  const [suggestionLogId, setSuggestionLogId] = useState<string | null>(null);
 
   useEffect(() => {
     const r = requestAnimationFrame(() => setMounted(true));
@@ -90,6 +92,7 @@ export function AIFindingsPanel({
     onSuccess: (data) => {
       setFindings(data.findings);
       setMeta({ modelId: data.modelId, costCents: data.costCents, latencyMs: data.latencyMs });
+      setSuggestionLogId(data.suggestionLogId);
       setError(null);
     },
     onError: (err: Error) => setError(err.message),
@@ -305,9 +308,14 @@ export function AIFindingsPanel({
           })}
         </div>
 
-        <footer className="shrink-0 border-t border-stone-200 px-3 py-2.5 bg-white flex items-center gap-2 text-[10px] text-stone-400">
-          <Activity className="w-3 h-3 text-violet-500" />
-          AI is advisory only. Every suggestion is logged for audit (model, prompt, response, accept/reject).
+        <footer className="shrink-0 border-t border-stone-200 px-3 py-2.5 bg-white flex items-center justify-between gap-2 text-[10px] text-stone-400">
+          <div className="flex items-center gap-2 min-w-0">
+            <Activity className="w-3 h-3 text-violet-500 shrink-0" />
+            <span className="truncate">AI is advisory only. Every suggestion is logged for audit.</span>
+          </div>
+          {suggestionLogId && (
+            <AIFeedbackWidget suggestionLogId={suggestionLogId} compact />
+          )}
         </footer>
       </aside>
     </div>

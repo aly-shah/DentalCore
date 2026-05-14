@@ -15,6 +15,7 @@ import {
   Calendar, Loader2, RefreshCw, Activity,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AIFeedbackWidget } from "@/components/ai/feedback-widget";
 
 interface RxItem { medicineName: string; dosage: string; frequency: string; duration: string }
 interface SummaryItem {
@@ -95,9 +96,10 @@ export function PatientSummaryView({
     },
   });
 
-  // AI summary — auto-fires on mount once data is ready
+  // AI summary — auto-fires on mount once data is ready. Returns the
+  // full payload (incl. suggestionLogId) so we can attach feedback.
   const aiSummary = useMutation({
-    mutationFn: async (): Promise<SummaryItem[]> => {
+    mutationFn: async (): Promise<{ summary: SummaryItem[]; suggestionLogId: string }> => {
       const r = await fetch(`/api/ai/patient-summary`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -105,7 +107,7 @@ export function PatientSummaryView({
       });
       const j = await r.json();
       if (!j.success) throw new Error(j.error || "AI failed");
-      return j.data.summary as SummaryItem[];
+      return { summary: j.data.summary as SummaryItem[], suggestionLogId: j.data.suggestionLogId as string };
     },
   });
 
@@ -253,27 +255,32 @@ export function PatientSummaryView({
             Couldn&apos;t generate briefing: {(aiSummary.error as Error).message}
           </p>
         )}
-        {aiSummary.data && aiSummary.data.length === 0 && (
+        {aiSummary.data && aiSummary.data.summary.length === 0 && (
           <p className="text-[11px] text-stone-500 italic">Nothing notable for today&apos;s visit.</p>
         )}
-        {aiSummary.data && aiSummary.data.length > 0 && (
-          <ul className="space-y-1.5">
-            {aiSummary.data.map((it, idx) => {
-              const s = SEVERITY_STYLES[it.severity];
-              return (
-                <li
-                  key={idx}
-                  className={cn("rounded-lg px-2.5 py-1.5 flex items-start gap-2 border", s.bg, s.border)}
-                >
-                  <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", s.dot)} />
-                  <span className="text-[12px] leading-snug text-stone-800">
-                    <span className="mr-1">{CATEGORY_ICON[it.category]}</span>
-                    {it.text}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
+        {aiSummary.data && aiSummary.data.summary.length > 0 && (
+          <>
+            <ul className="space-y-1.5">
+              {aiSummary.data.summary.map((it, idx) => {
+                const s = SEVERITY_STYLES[it.severity];
+                return (
+                  <li
+                    key={idx}
+                    className={cn("rounded-lg px-2.5 py-1.5 flex items-start gap-2 border", s.bg, s.border)}
+                  >
+                    <span className={cn("w-1.5 h-1.5 rounded-full mt-1.5 shrink-0", s.dot)} />
+                    <span className="text-[12px] leading-snug text-stone-800">
+                      <span className="mr-1">{CATEGORY_ICON[it.category]}</span>
+                      {it.text}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="mt-2 flex justify-end">
+              <AIFeedbackWidget suggestionLogId={aiSummary.data.suggestionLogId} compact />
+            </div>
+          </>
         )}
       </section>
 
