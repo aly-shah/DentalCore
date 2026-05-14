@@ -15,7 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ClipboardList, Plus, X as XIcon, Check, CheckCheck, AlertTriangle,
   Sparkles, Trash2, FileSignature, ChevronRight, DollarSign, Loader2,
-  Zap, Stethoscope, ListChecks, GripVertical,
+  Zap, Stethoscope, ListChecks, GripVertical, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading";
@@ -112,6 +112,7 @@ function dateShort(s: string | null | undefined): string {
 export function TreatmentPlansTab({ patientId }: { patientId: string }) {
   const qc = useQueryClient();
   const [showCreate, setShowCreate] = useState(false);
+  const [editingPlan, setEditingPlan] = useState<TreatmentPlan | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const { data: plansRes, isLoading } = useQuery({
@@ -215,18 +216,21 @@ export function TreatmentPlansTab({ patientId }: { patientId: string }) {
               onAccept={() => accept.mutate(p.id)}
               onComplete={() => complete.mutate(p.id)}
               onCancel={() => cancel.mutate(p.id)}
+              onEdit={() => setEditingPlan(p)}
               busy={accept.isPending || complete.isPending || cancel.isPending}
             />
           ))}
         </div>
       )}
 
-      {showCreate && (
+      {(showCreate || editingPlan) && (
         <CreatePlanDrawer
           patientId={patientId}
-          onClose={() => setShowCreate(false)}
+          existing={editingPlan}
+          onClose={() => { setShowCreate(false); setEditingPlan(null); }}
           onCreated={() => {
             setShowCreate(false);
+            setEditingPlan(null);
             qc.invalidateQueries({ queryKey: ["treatment-plans", patientId] });
           }}
         />
@@ -254,7 +258,7 @@ function KpiCard({ label, value, dot, isText }: { label: string; value: number |
 // ───────── plan card ─────────
 
 function PlanCard({
-  plan, expanded, onToggle, onAccept, onComplete, onCancel, busy,
+  plan, expanded, onToggle, onAccept, onComplete, onCancel, onEdit, busy,
 }: {
   plan: TreatmentPlan;
   expanded: boolean;
@@ -262,6 +266,7 @@ function PlanCard({
   onAccept: () => void;
   onComplete: () => void;
   onCancel: () => void;
+  onEdit: () => void;
   busy: boolean;
 }) {
   const s = STATUS_STYLES[plan.status];
@@ -370,7 +375,7 @@ function PlanCard({
           )}
 
           {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-2 border-t border-stone-100">
+          <div className="flex items-center gap-2 pt-2 border-t border-stone-100 flex-wrap">
             {plan.status === "PROPOSED" && (
               <Button size="sm" iconLeft={<Check className="w-3.5 h-3.5" />} onClick={onAccept} disabled={busy}>
                 Accept Plan
@@ -380,6 +385,15 @@ function PlanCard({
               <Button size="sm" iconLeft={<CheckCheck className="w-3.5 h-3.5" />} onClick={onComplete} disabled={busy}>
                 Mark Complete
               </Button>
+            )}
+            {plan.status !== "COMPLETED" && plan.status !== "CANCELLED" && (
+              <button
+                onClick={onEdit}
+                disabled={busy}
+                className="text-[11px] text-stone-600 hover:text-blue-700 hover:bg-blue-50 font-medium px-2 py-1 rounded transition-colors flex items-center gap-1"
+              >
+                <Pencil className="w-3 h-3" /> Edit
+              </button>
             )}
             {plan.status !== "COMPLETED" && plan.status !== "CANCELLED" && (
               <button
@@ -539,12 +553,15 @@ const PLAN_TEMPLATES = [
 ] as const;
 
 function CreatePlanDrawer({
-  patientId, onClose, onCreated,
+  patientId, existing, onClose, onCreated,
 }: {
   patientId: string;
+  /** When provided, the drawer enters edit mode and PUTs to /api/treatment-plans/[id]. */
+  existing?: TreatmentPlan | null;
   onClose: () => void;
   onCreated: () => void;
 }) {
+  const isEdit = !!existing;
   // ───── slide-in animation state ─────
   const [mounted, setMounted] = useState(false);
   const [contentReady, setContentReady] = useState(false);
@@ -574,16 +591,33 @@ function CreatePlanDrawer({
     transition: `opacity 280ms cubic-bezier(0.16, 1, 0.3, 1) ${i * 45}ms, transform 320ms cubic-bezier(0.16, 1, 0.3, 1) ${i * 45}ms`,
   });
 
-  // ───── form state ─────
-  const [title, setTitle] = useState("");
-  const [diagnosisChips, setDiagnosisChips] = useState<string[]>([]);
+  // ───── form state — initialized from `existing` when editing ─────
+  const initialChips = existing?.diagnosis
+    ? existing.diagnosis.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const initialItems: DraftItem[] = existing
+    ? [
+        ...existing.items,
+        ...existing.phases.flatMap((ph) => ph.items),
+      ].map((it) => ({
+        id: it.id, // preserve real id so backend can match on PUT
+        description: it.description,
+        cdtCode: it.cdtCode ?? "",
+        fdi: it.fdi != null ? String(it.fdi) : "",
+        unitPrice: String(it.unitPrice),
+        insuranceCoverage: String(it.insuranceCoverage),
+      }))
+    : [{ id: crypto.randomUUID(), description: "", cdtCode: "", fdi: "", unitPrice: "", insuranceCoverage: "" }];
+
+  const [title, setTitle] = useState(existing?.title ?? "");
+  const [diagnosisChips, setDiagnosisChips] = useState<string[]>(initialChips);
   const [diagnosisDraft, setDiagnosisDraft] = useState("");
-  const [rationale, setRationale] = useState("");
-  const [priority, setPriority] = useState<PlanPriority>("MEDIUM");
-  const [consentRequired, setConsentRequired] = useState(false);
-  const [items, setItems] = useState<DraftItem[]>([
-    { id: crypto.randomUUID(), description: "", cdtCode: "", fdi: "", unitPrice: "", insuranceCoverage: "" },
-  ]);
+  const [rationale, setRationale] = useState(existing?.rationale ?? "");
+  const [priority, setPriority] = useState<PlanPriority>(existing?.priority ?? "MEDIUM");
+  const [consentRequired, setConsentRequired] = useState(existing?.consentRequired ?? false);
+  const [items, setItems] = useState<DraftItem[]>(
+    initialItems.length > 0 ? initialItems : [{ id: crypto.randomUUID(), description: "", cdtCode: "", fdi: "", unitPrice: "", insuranceCoverage: "" }]
+  );
 
   const total = useMemo(
     () => items.reduce((sum, it) => sum + (parseFloat(it.unitPrice) || 0), 0),
@@ -644,28 +678,45 @@ function CreatePlanDrawer({
   const create = useMutation({
     mutationFn: async () => {
       const diagnosis = diagnosisChips.join(", ") || diagnosisDraft.trim();
-      const payload = {
+      const mappedItems = items
+        .filter((it) => it.description.trim() && parseFloat(it.unitPrice) >= 0)
+        .map((it) => ({
+          description: it.description.trim(),
+          cdtCode: it.cdtCode.trim() || undefined,
+          fdi: it.fdi.trim() ? parseInt(it.fdi.trim(), 10) : undefined,
+          unitPrice: parseFloat(it.unitPrice) || 0,
+          insuranceCoverage: parseFloat(it.insuranceCoverage) || 0,
+          quantity: 1,
+        }));
+      const corePayload = {
         title: title.trim() || undefined,
         diagnosis: diagnosis || undefined,
         rationale: rationale.trim() || undefined,
         priority,
         consentRequired,
-        status: "PROPOSED" as const,
-        items: items
-          .filter((it) => it.description.trim() && parseFloat(it.unitPrice) >= 0)
-          .map((it) => ({
-            description: it.description.trim(),
-            cdtCode: it.cdtCode.trim() || undefined,
-            fdi: it.fdi.trim() ? parseInt(it.fdi.trim(), 10) : undefined,
-            unitPrice: parseFloat(it.unitPrice) || 0,
-            insuranceCoverage: parseFloat(it.insuranceCoverage) || 0,
-            quantity: 1,
-          })),
       };
+
+      if (isEdit && existing) {
+        // PUT — update fields; backend replaces items + phases.
+        const r = await fetch(`/api/treatment-plans/${existing.id}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...corePayload, items: mappedItems }),
+        });
+        const j = await r.json();
+        if (!j.success) throw new Error(j.error || "Failed");
+        return j.data;
+      }
+
+      // Create
       const r = await fetch(`/api/patients/${patientId}/treatment-plans`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          ...corePayload,
+          status: "PROPOSED" as const,
+          items: mappedItems,
+        }),
       });
       const j = await r.json();
       if (!j.success) throw new Error(j.error || "Failed");
@@ -723,8 +774,14 @@ function CreatePlanDrawer({
                 <ClipboardList className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h2 className="text-base font-bold text-stone-900 leading-tight">New Treatment Plan</h2>
-                <p className="text-[11px] text-stone-500 leading-tight mt-0.5">Build, price, then send to the patient</p>
+                <h2 className="text-base font-bold text-stone-900 leading-tight">
+                  {isEdit ? "Edit Treatment Plan" : "New Treatment Plan"}
+                </h2>
+                <p className="text-[11px] text-stone-500 leading-tight mt-0.5">
+                  {isEdit
+                    ? `Editing plan from ${dateShort(existing!.createdAt)}`
+                    : "Build, price, then send to the patient"}
+                </p>
               </div>
             </div>
             <button
@@ -1049,7 +1106,11 @@ function CreatePlanDrawer({
                 {create.isPending
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <Sparkles className="w-3.5 h-3.5" />}
-                {create.isPending ? "Creating…" : `Create plan${validItemCount > 0 ? ` (${validItemCount})` : ""}`}
+                {create.isPending
+                  ? (isEdit ? "Saving…" : "Creating…")
+                  : isEdit
+                    ? `Save changes${validItemCount > 0 ? ` (${validItemCount})` : ""}`
+                    : `Create plan${validItemCount > 0 ? ` (${validItemCount})` : ""}`}
               </button>
             </div>
           </div>
