@@ -79,6 +79,7 @@ const extraRoutes: Record<string, { label: string; href: string; icon: string; a
   "/lab-results": [{ label: "Dental Imaging", href: "/lab-results", icon: "FlaskConical", afterModule: "MOD-FOLLOWUP", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR"] }],
   "/admin/packages": [{ label: "Treatment Plans", href: "/admin/packages", icon: "Package", afterModule: "MOD-PROCEDURE", roles: ["ADMIN", "SUPER_ADMIN", "BILLING"] }],
   "/admin/templates": [{ label: "Procedure Templates", href: "/admin/templates", icon: "FileText", afterModule: "MOD-PROCEDURE", roles: ["ADMIN", "SUPER_ADMIN"] }],
+  "/admin/blocks":    [{ label: "Calendar Blocks", href: "/admin/blocks", icon: "Clock", afterModule: "MOD-APPOINTMENT", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR"] }],
   "/pharmacy": [{ label: "Dental Supplies", href: "/pharmacy", icon: "Pill", afterModule: "MOD-BILLING", roles: ["ADMIN", "SUPER_ADMIN", "BILLING"] }],
 };
 
