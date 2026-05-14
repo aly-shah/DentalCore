@@ -48,7 +48,7 @@ export async function POST(request: Request) {
       data: {
         appointmentId, patientId, doctorId,
         rawTranscript: text || "Awaiting transcription...",
-        structuredNote: text ? extractStructure(text) : { chiefComplaint: "Pending", findings: "Pending", plan: "Pending" },
+        structuredNote: JSON.stringify(text ? extractStructure(text) : { chiefComplaint: "Pending", findings: "Pending", plan: "Pending" }),
         summary: text ? text.substring(0, 200) : "Transcription pending.",
         status: text ? "COMPLETED" : "PROCESSING",
         duration: body.duration || null,
@@ -145,7 +145,7 @@ async function handleAudioTranscription(request: Request) {
         patientId,
         doctorId,
         rawTranscript: transcript,
-        structuredNote,
+        structuredNote: JSON.stringify(structuredNote),
         summary,
         status: "COMPLETED",
         duration: Math.round(audioFile.size / 16000), // rough estimate
@@ -201,7 +201,7 @@ async function structureNoteWithAI(text: string, appointmentId?: string, patient
         patientId,
         doctorId,
         rawTranscript: text,
-        structuredNote: structured,
+        structuredNote: JSON.stringify(structured),
         summary,
         status: "COMPLETED",
         language: "en",

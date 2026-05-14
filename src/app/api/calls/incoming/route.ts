@@ -52,9 +52,12 @@ export async function POST(request: Request) {
           leadId: match?.lead?.id || null,
           patientId: match?.patient?.id || null,
           userId: agentId,
+          callerName: match?.patient
+            ? `${match.patient.firstName ?? ""} ${match.patient.lastName ?? ""}`.trim() || "Unknown"
+            : match?.lead?.name ?? "Unknown",
           type: "INBOUND",
-          duration: body.duration || null,
-          notes: state === "missed" ? "Missed call" : body.notes || null,
+          duration: body.duration ?? 0,
+          notes: state === "missed" ? "Missed call" : body.notes ?? null,
           outcome: state === "missed" ? "NO_ANSWER" : body.outcome || "INFO_PROVIDED",
         },
       });

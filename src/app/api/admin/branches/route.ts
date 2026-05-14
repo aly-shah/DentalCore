@@ -47,8 +47,9 @@ export async function POST(request: Request) {
 
     const body = await request.json();
 
-    // Check for duplicate code
-    const existing = await prisma.branch.findUnique({ where: { code: body.code } });
+    // Check for duplicate code (Branch.code isn't @unique in the schema,
+    // so use findFirst — we still want to surface a friendly 409.)
+    const existing = await prisma.branch.findFirst({ where: { code: body.code } });
     if (existing) {
       return NextResponse.json(
         { success: false, error: "A branch with this code already exists" },

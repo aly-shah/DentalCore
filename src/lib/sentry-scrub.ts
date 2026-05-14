@@ -55,7 +55,7 @@ function scrubValue(value: unknown, depth: number): unknown {
   return out;
 }
 
-export function scrubSentryEvent(event: AnyEvent, _hint?: EventHint): AnyEvent | null {
+export function scrubSentryEvent<T extends AnyEvent>(event: T, _hint?: EventHint): T | null {
   // Strip request body / query / cookies — these almost always contain
   // either a session cookie (no PHI but still a credential) or form data
   // with patient inputs.

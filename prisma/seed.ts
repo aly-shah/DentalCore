@@ -179,6 +179,143 @@ async function main() {
   }
   console.log(`  Patient packages: ${mockPatientPackages.length}`);
 
+  // ───── Default procedure templates (idempotent via @unique code) ─────
+  const defaultTemplates: Array<Parameters<typeof prisma.treatmentTemplate.upsert>[0]["create"]> = [
+    {
+      code: "COMPOSITE_FILLING", name: "Composite Filling", category: "Restorative", cdtCode: "D2330",
+      defaultDiagnosis: "Dental caries",
+      defaultClinicalFindings: "Cavitated lesion on occlusal/proximal surface; positive cold response.",
+      defaultProcedureNotes: "Local anesthesia administered. Caries excavated. Rubber dam isolation. Composite resin placed in increments and light-cured. Occlusion checked and adjusted.",
+      defaultMaterialsUsed: "Composite resin (A2), bonding agent, etchant 37%, rubber dam.",
+      defaultPostOpInstructions: "Avoid hot/cold liquids for 24 hrs. Mild sensitivity is normal for a few days. Return if persistent pain.",
+      defaultFollowUpDays: 14, defaultPrice: 200, defaultDuration: 45,
+    },
+    {
+      code: "RCT_ANTERIOR", name: "Root Canal — Anterior", category: "Endodontic", cdtCode: "D3310",
+      defaultDiagnosis: "Irreversible pulpitis (anterior)",
+      defaultClinicalFindings: "Spontaneous pain, lingering response to cold, percussion-positive anterior tooth.",
+      defaultProcedureNotes: "Local anesthesia. Rubber dam. Access cavity prepared. Working length confirmed by apex locator and X-ray. Canal cleaned and shaped to size 35/.04. Irrigated with NaOCl + EDTA. Obturated with gutta-percha and AH Plus sealer (single cone).",
+      defaultMaterialsUsed: "Gutta-percha, AH Plus sealer, NaOCl 3%, EDTA 17%, rubber dam.",
+      defaultPostOpInstructions: "Avoid biting on treated tooth until permanent restoration. Mild tenderness is normal for 2-3 days.",
+      defaultRxItems: [
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "TDS PRN", duration: "3 days" },
+      ],
+      defaultFollowUpDays: 7, defaultPrice: 700, defaultDuration: 60,
+    },
+    {
+      code: "RCT_PREMOLAR", name: "Root Canal — Premolar", category: "Endodontic", cdtCode: "D3320",
+      defaultDiagnosis: "Irreversible pulpitis (premolar)",
+      defaultClinicalFindings: "Severe pain on cold, lingering, percussion-tender.",
+      defaultProcedureNotes: "Local anesthesia. Rubber dam. Two canals located, shaped to 35/.06, obturated with gutta-percha single-cone.",
+      defaultPostOpInstructions: "Soft diet 24 hrs. Tenderness expected. Schedule crown prep at follow-up.",
+      defaultRxItems: [
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "QDS PRN", duration: "3 days" },
+      ],
+      defaultFollowUpDays: 10, defaultPrice: 850, defaultDuration: 75,
+    },
+    {
+      code: "RCT_MOLAR", name: "Root Canal — Molar", category: "Endodontic", cdtCode: "D3330",
+      defaultDiagnosis: "Irreversible pulpitis / apical periodontitis (molar)",
+      defaultClinicalFindings: "Throbbing pain, percussion-positive, possible periapical lesion on X-ray.",
+      defaultProcedureNotes: "Local anesthesia. Rubber dam. 3-4 canals located and shaped. Obturated with gutta-percha. Build-up placed.",
+      defaultPostOpInstructions: "Avoid biting on tooth. Crown prep in 2 weeks. Antibiotic only if swelling.",
+      defaultRxItems: [
+        { medicineName: "Amoxicillin 500 mg", dosage: "1 cap", frequency: "TDS", duration: "5 days", instructions: "Only if swelling present" },
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "QDS PRN", duration: "5 days" },
+      ],
+      defaultFollowUpDays: 14, defaultPrice: 1000, defaultDuration: 90,
+    },
+    {
+      code: "CROWN_PFM", name: "Crown (PFM)", category: "Prosthodontic", cdtCode: "D2750",
+      defaultDiagnosis: "Heavily restored / root-treated tooth",
+      defaultProcedureNotes: "Tooth prepared for full-coverage crown. Impressions taken (digital/PVS). Temporary crown placed. Final crown cementation at next visit.",
+      defaultMaterialsUsed: "Provisional crown, PVS impression material, temporary cement.",
+      defaultPostOpInstructions: "Avoid sticky foods until permanent crown. Mild gum tenderness normal.",
+      defaultFollowUpDays: 14, defaultPrice: 1100, defaultDuration: 90,
+    },
+    {
+      code: "CROWN_ZIRCONIA", name: "Crown (Zirconia)", category: "Prosthodontic", cdtCode: "D2740",
+      defaultDiagnosis: "Heavily restored / root-treated tooth — aesthetic zone",
+      defaultProcedureNotes: "Tooth prepared. Digital scan. Temporary crown placed. Zirconia crown delivered and cemented at next visit.",
+      defaultFollowUpDays: 14, defaultPrice: 1350, defaultDuration: 90,
+    },
+    {
+      code: "BRIDGE_3UNIT", name: "Bridge (3-unit)", category: "Prosthodontic", cdtCode: "D6240",
+      defaultDiagnosis: "Missing tooth requiring fixed prosthesis",
+      defaultProcedureNotes: "Abutment teeth prepared, impressions taken, provisional bridge placed. Final cementation at next visit.",
+      defaultFollowUpDays: 21, defaultPrice: 3000, defaultDuration: 120,
+    },
+    {
+      code: "EXTRACTION_SIMPLE", name: "Extraction (Simple)", category: "Surgery", cdtCode: "D7140",
+      defaultDiagnosis: "Non-restorable tooth",
+      defaultProcedureNotes: "Local anesthesia. Tooth luxated and delivered atraumatically. Socket inspected and irrigated. Hemostasis achieved.",
+      defaultPostOpInstructions: "Bite firmly on gauze for 30 min. No spitting/rinsing for 24 hrs. Soft diet. No smoking 48 hrs. Mild swelling expected.",
+      defaultRxItems: [
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "QDS PRN", duration: "3 days" },
+      ],
+      defaultFollowUpDays: 7, defaultPrice: 200, defaultDuration: 30,
+    },
+    {
+      code: "EXTRACTION_SURGICAL", name: "Extraction (Surgical)", category: "Surgery", cdtCode: "D7210",
+      defaultDiagnosis: "Impacted or surgically removed tooth",
+      defaultProcedureNotes: "Local anesthesia. Flap raised, bone removal as needed, tooth sectioned and removed. Socket irrigated. Sutures placed.",
+      defaultPostOpInstructions: "Ice pack 20 min on / 20 min off for first 6 hrs. Soft diet 3-4 days. No smoking. Suture removal in 7 days.",
+      defaultRxItems: [
+        { medicineName: "Amoxicillin 500 mg", dosage: "1 cap", frequency: "TDS", duration: "5 days" },
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "QDS PRN", duration: "5 days" },
+        { medicineName: "Chlorhexidine Mouthwash 0.2%", dosage: "10 ml rinse", frequency: "BD", duration: "1 week" },
+      ],
+      defaultFollowUpDays: 7, defaultPrice: 450, defaultDuration: 60,
+    },
+    {
+      code: "IMPLANT_SINGLE", name: "Implant (Single)", category: "Surgery", cdtCode: "D6010",
+      defaultDiagnosis: "Missing tooth — implant restoration",
+      defaultProcedureNotes: "Local anesthesia. Surgical guide placed. Implant osteotomy prepared. Implant placed. Healing abutment or cover screw. Sutures.",
+      defaultPostOpInstructions: "Strictly no biting on surgical site for 4 weeks. Saltwater rinses after 24 hrs. Soft diet 2 weeks. Avoid pressure on area.",
+      defaultRxItems: [
+        { medicineName: "Amoxicillin 500 mg", dosage: "1 cap", frequency: "TDS", duration: "5 days" },
+        { medicineName: "Ibuprofen 400 mg", dosage: "1 tab", frequency: "QDS PRN", duration: "5 days" },
+      ],
+      defaultFollowUpDays: 14, defaultPrice: 2400, defaultDuration: 90,
+    },
+    {
+      code: "VENEER_PORCELAIN", name: "Veneer (Porcelain)", category: "Cosmetic", cdtCode: "D2962",
+      defaultDiagnosis: "Aesthetic concern / discoloration / chip",
+      defaultProcedureNotes: "Minimal facial preparation, impressions, temporary veneer. Final veneer bonded at next visit.",
+      defaultFollowUpDays: 14, defaultPrice: 1300, defaultDuration: 75,
+    },
+    {
+      code: "SCALING_POLISHING", name: "Scaling & Polishing", category: "Preventive", cdtCode: "D1110",
+      defaultDiagnosis: "Routine recall / gingivitis",
+      defaultProcedureNotes: "Ultrasonic scaling, hand scaling as needed, polishing with prophylaxis paste. OHI provided.",
+      defaultPostOpInstructions: "Mild gum tenderness for 24 hrs. Brush 2x daily, floss daily. Recall in 6 months.",
+      defaultFollowUpDays: 180, defaultPrice: 150, defaultDuration: 30,
+    },
+    {
+      code: "WHITENING_INOFFICE", name: "Whitening (In-office)", category: "Cosmetic", cdtCode: "D9972",
+      defaultDiagnosis: "Tooth discoloration — patient request",
+      defaultProcedureNotes: "Gingival barrier placed. Hydrogen peroxide gel applied in 3 cycles of 15 min. Shade re-evaluated.",
+      defaultPostOpInstructions: "Avoid staining foods/drinks (coffee, tea, red wine, curry) for 48 hrs. Sensitivity is normal for 24-48 hrs.",
+      defaultFollowUpDays: 30, defaultPrice: 350, defaultDuration: 60,
+    },
+    {
+      code: "BONDING", name: "Bonding", category: "Restorative", cdtCode: "D2391",
+      defaultDiagnosis: "Small chip, gap, or discoloration",
+      defaultProcedureNotes: "Tooth surface etched. Bonding agent applied. Composite shaped and light-cured. Polished.",
+      defaultPostOpInstructions: "Avoid biting hard objects directly with bonded area. Mild sensitivity normal.",
+      defaultFollowUpDays: 30, defaultPrice: 250, defaultDuration: 30,
+    },
+  ];
+
+  for (const tpl of defaultTemplates) {
+    await prisma.treatmentTemplate.upsert({
+      where: { code: tpl.code },
+      create: tpl,
+      update: {}, // don't overwrite admin edits on subsequent seeds
+    });
+  }
+  console.log(`  Treatment templates: ${defaultTemplates.length}`);
+
   console.log("\nSeed complete.");
   console.log("\nLogin with:");
   console.log("  admin@dentacore.com / password  (Admin)");
