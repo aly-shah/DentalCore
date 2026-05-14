@@ -11,7 +11,7 @@ import {
   CalendarClock, Plus, X as XIcon, Trash2, Loader2,
   Wrench, Coffee, Users as UsersIcon, Ban, Save, AlertTriangle,
 } from "lucide-react";
-import { Button, Card, EmptyState } from "@/components/ui";
+import { Button, Card, EmptyState, CardListSkeleton } from "@/components/ui";
 import { useAuth } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
@@ -118,9 +118,7 @@ export default function BlocksAdminPage() {
 
       {/* Content */}
       {blocksQuery.isLoading ? (
-        <div className="flex items-center justify-center py-20 text-stone-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
+        <CardListSkeleton rows={4} />
       ) : (blocksQuery.data ?? []).length === 0 ? (
         <Card padding="lg">
           <EmptyState

@@ -17,7 +17,7 @@ export { Avatar } from "./avatar";
 export { StatCard } from "./stat-card";
 export { SearchInput } from "./search-input";
 export { EmptyState } from "./empty-state";
-export { LoadingSpinner, Skeleton } from "./loading";
+export { LoadingSpinner, Skeleton, CardListSkeleton, GridSkeleton, TableSkeleton, KpiSkeleton } from "./loading";
 export { Textarea } from "./textarea";
 export { Checkbox } from "./checkbox";
 export { FileUpload } from "./file-upload";

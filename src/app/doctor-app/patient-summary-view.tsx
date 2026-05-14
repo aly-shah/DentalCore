@@ -158,7 +158,7 @@ export function PatientSummaryView({
         <div className="relative shrink-0">
           {data.patient.profileImage ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.patient.profileImage} alt={data.patient.firstName} className="w-14 h-14 rounded-2xl object-cover" />
+            <img src={data.patient.profileImage} alt={data.patient.firstName} loading="lazy" decoding="async" className="w-14 h-14 rounded-2xl object-cover" />
           ) : (
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-500 flex items-center justify-center text-white text-lg font-bold shadow-md">
               {initials || "?"}

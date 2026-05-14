@@ -18,7 +18,7 @@ import {
   Zap, Stethoscope, ListChecks, GripVertical, Pencil,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { LoadingSpinner } from "@/components/ui/loading";
+import { CardListSkeleton } from "@/components/ui/loading";
 import { cn } from "@/lib/utils";
 
 // ───────── types ─────────
@@ -194,9 +194,7 @@ export function TreatmentPlansTab({ patientId }: { patientId: string }) {
 
       {/* List */}
       {isLoading ? (
-        <div className="flex justify-center py-12">
-          <LoadingSpinner size="md" />
-        </div>
+        <CardListSkeleton rows={3} />
       ) : plans.length === 0 ? (
         <div className="rounded-2xl border-2 border-dashed border-stone-200 p-8 text-center space-y-3">
           <ClipboardList className="w-10 h-10 text-stone-300 mx-auto" />

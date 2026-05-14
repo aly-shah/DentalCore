@@ -164,6 +164,8 @@ function ImageCard({
             <img
               src={img.beforeUrl}
               alt="Before"
+              loading="lazy"
+              decoding="async"
               className="w-full h-full object-cover"
             />
             <span className="absolute top-1.5 left-1.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-black/60 text-white">
@@ -176,6 +178,8 @@ function ImageCard({
                 <img
                   src={img.afterUrl}
                   alt="After"
+                  loading="lazy"
+                  decoding="async"
                   className="w-full h-full object-cover"
                 />
                 <span className="absolute top-1.5 right-1.5 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-600 text-white">

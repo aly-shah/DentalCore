@@ -7,7 +7,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Sparkles, DollarSign, Clock, Activity, Loader2, AlertTriangle, CheckCircle2, XCircle, TrendingUp } from "lucide-react";
-import { Card } from "@/components/ui";
+import { Card, CardListSkeleton, KpiSkeleton } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 interface UsageResponse {
@@ -106,9 +106,10 @@ export default function AIUsagePage() {
       </div>
 
       {isLoading && (
-        <div className="flex items-center justify-center py-20 text-stone-400">
-          <Loader2 className="w-5 h-5 animate-spin" />
-        </div>
+        <>
+          <KpiSkeleton count={3} />
+          <CardListSkeleton rows={3} />
+        </>
       )}
 
       {isError && (

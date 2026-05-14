@@ -914,7 +914,7 @@ export default function ConsultationPage() {
 
       {/* ===== MOBILE BOTTOM BAR ===== */}
       {selected && !saved && (
-        <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-stone-200 px-4 py-2.5 flex items-center gap-2 z-30">
+        <div className="fixed bottom-0 left-0 right-0 lg:hidden bg-white border-t border-stone-200 px-4 py-2.5 pb-[max(0.625rem,env(safe-area-inset-bottom))] flex items-center gap-2 z-30">
           <Button size="sm" variant="outline" className="flex-1" iconLeft={<Pill className="w-3.5 h-3.5" />} onClick={addRx}>Rx</Button>
           <Button size="sm" variant="outline" className="flex-1" iconLeft={<Stethoscope className="w-3.5 h-3.5" />} onClick={addProcedure}>Proc</Button>
           <Button size="sm" className="flex-1" iconLeft={<CheckCircle className="w-3.5 h-3.5" />} onClick={handleComplete} disabled={saving}>
