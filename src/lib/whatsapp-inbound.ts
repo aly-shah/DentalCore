@@ -27,18 +27,32 @@ interface InboundMessage {
   /** True if WhatsApp says this came from us (shouldn't normally
    *  reach us — Baileys filters fromMe upstream — but defensive). */
   fromMe: boolean;
-  /** Plain-text body if present. Other media types are logged but
-   *  not currently rendered into CommunicationLog.content. */
+  /** Plain-text body (or media caption) if present. */
   text: string | null;
   /** Best-effort sender display name from the WhatsApp profile. */
   pushName: string | null;
   /** Unix ms when WhatsApp received the message. */
   timestamp: number;
+  /** Already-saved public URL for an attached image / video / audio /
+   *  document. Caller downloads + persists the file before invoking
+   *  the handler. */
+  mediaUrl?: string | null;
+  mediaMimeType?: string | null;
 }
 
 /** Normalize a phone string to digits-only for matching. */
 function normalizePhone(s: string | null | undefined): string {
   return (s ?? "").replace(/[^0-9]/g, "");
+}
+
+/** Short, human-readable placeholder for media-only messages. */
+function mediaPlaceholder(mime: string | null | undefined): string {
+  if (!mime) return "[Attachment]";
+  if (mime.startsWith("image/")) return "[Image]";
+  if (mime.startsWith("video/")) return "[Video]";
+  if (mime.startsWith("audio/")) return "[Voice note]";
+  if (mime === "application/pdf") return "[PDF document]";
+  return "[Attachment]";
 }
 
 /**
@@ -90,11 +104,15 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
       // Skip group chats (@g.us), broadcasts, status updates, etc.
       return;
     }
-    if (!msg.text || !msg.text.trim()) {
-      // Media-only messages are skipped for now. We could log a
-      // placeholder ("[image]") in a future iteration.
-      return;
-    }
+    const hasText = !!msg.text && msg.text.trim().length > 0;
+    const hasMedia = !!msg.mediaUrl;
+    if (!hasText && !hasMedia) return;
+
+    // Use the text body as content; for media-only, write a typed
+    // placeholder so the timeline shows something useful.
+    const content = hasText
+      ? msg.text!
+      : mediaPlaceholder(msg.mediaMimeType);
 
     const subject = `wa-inbound:${msg.id}`;
     const dup = await prisma.communicationLog.findFirst({
@@ -118,7 +136,9 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
             channel: "WHATSAPP",
             fromPhone: digits,
             fromName: msg.pushName ?? null,
-            content: msg.text,
+            content,
+            mediaUrl: msg.mediaUrl ?? null,
+            mediaMimeType: msg.mediaMimeType ?? null,
             receivedAt: new Date(msg.timestamp),
           },
         });
@@ -129,7 +149,8 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
       logger.info("Inbound WA queued in unmatched inbox", {
         from: digits,
         pushName: msg.pushName,
-        preview: msg.text.slice(0, 80),
+        preview: content.slice(0, 80),
+        hasMedia,
       });
       return;
     }
@@ -140,7 +161,9 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
         type: "WHATSAPP",
         direction: "INBOUND",
         subject,
-        content: msg.text,
+        content,
+        mediaUrl: msg.mediaUrl ?? null,
+        mediaMimeType: msg.mediaMimeType ?? null,
         sentByName: msg.pushName ?? `${patient.firstName} ${patient.lastName}`,
         // sentById intentionally null — INBOUND messages aren't authored
         // by a clinic user.
@@ -157,9 +180,9 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
           userId: patient.assignedDoctorId,
           dedupKey: subject,
           title: `New WhatsApp from ${patient.firstName} ${patient.lastName}`,
-          message: msg.text.length > 120 ? msg.text.slice(0, 117) + "…" : msg.text,
+          message: content.length > 120 ? content.slice(0, 117) + "…" : content,
           type: "COMMUNICATION",
-          link: `/patients/${patient.id}?tab=communications`,
+          link: `/patients/${patient.id}?tab=comms`,
           tenantId: patient.tenantId ?? null,
         },
         update: {},
@@ -169,7 +192,8 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
     logger.info("Inbound WA logged", {
       patientId: patient.id,
       messageId: msg.id,
-      preview: msg.text.slice(0, 80),
+      preview: content.slice(0, 80),
+      hasMedia,
     });
   } catch (err) {
     logger.warn("Inbound WA handler failed", { err: String(err), msgId: msg.id });

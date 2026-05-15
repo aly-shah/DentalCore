@@ -16,10 +16,14 @@ const BAILEYS_ENABLED = process.env.WHATSAPP_BAILEYS_ENABLED === "1" || process.
 
 export interface MessagePayload {
   to: string;          // Phone number with country code
-  message: string;     // Message text
+  message: string;     // Message text (used as caption when media is attached)
   type?: "whatsapp" | "sms";
   template?: string;   // Template name for WhatsApp
   params?: Record<string, string>; // Template parameters
+  /** Optional media attachment — fully-qualified URL the gateway can fetch. */
+  mediaUrl?: string;
+  /** MIME type for the media. "image/*" → image bubble, "application/pdf" → doc bubble. */
+  mediaMimeType?: string;
 }
 
 export interface MessageResult {
@@ -47,7 +51,11 @@ export async function sendMessage(payload: MessagePayload): Promise<MessageResul
   // 2. Baileys QR-paired WhatsApp (only when explicitly enabled AND connected)
   if (!wantSms && BAILEYS_ENABLED && isWhatsAppReady()) {
     try {
-      const messageId = await sendBaileysMessage(payload.to, payload.message);
+      const media =
+        payload.mediaUrl && payload.mediaMimeType
+          ? { url: payload.mediaUrl, mimeType: payload.mediaMimeType }
+          : undefined;
+      const messageId = await sendBaileysMessage(payload.to, payload.message, media);
       return { success: true, channel: "whatsapp", messageId };
     } catch (err) {
       // Fall through to SMS / log if Baileys fails on this message.
@@ -67,18 +75,36 @@ export async function sendMessage(payload: MessagePayload): Promise<MessageResul
 
 async function sendWhatsApp(payload: MessagePayload): Promise<MessageResult> {
   try {
+    // Build the message body. Meta's WhatsApp Cloud API uses a
+    // per-type envelope: { type: "image", image: { link, caption } },
+    // { type: "document", document: { link, caption, filename } }, etc.
+    // Caption-style media reuses payload.message; plain text uses
+    // { type: "text", text: { body } }.
+    const to = payload.to.replace(/[^0-9]/g, "");
+    let body: Record<string, unknown>;
+    if (payload.mediaUrl && payload.mediaMimeType) {
+      const mime = payload.mediaMimeType;
+      const caption = payload.message?.trim() || undefined;
+      if (mime.startsWith("image/")) {
+        body = { messaging_product: "whatsapp", to, type: "image", image: { link: payload.mediaUrl, caption } };
+      } else if (mime.startsWith("video/")) {
+        body = { messaging_product: "whatsapp", to, type: "video", video: { link: payload.mediaUrl, caption } };
+      } else if (mime.startsWith("audio/")) {
+        body = { messaging_product: "whatsapp", to, type: "audio", audio: { link: payload.mediaUrl } };
+      } else {
+        const filename = payload.mediaUrl.split("/").pop() ?? "document";
+        body = { messaging_product: "whatsapp", to, type: "document", document: { link: payload.mediaUrl, filename, caption } };
+      }
+    } else {
+      body = { messaging_product: "whatsapp", to, type: "text", text: { body: payload.message } };
+    }
     const res = await fetch(WHATSAPP_API_URL!, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${WHATSAPP_API_TOKEN}`,
       },
-      body: JSON.stringify({
-        messaging_product: "whatsapp",
-        to: payload.to.replace(/[^0-9]/g, ""),
-        type: "text",
-        text: { body: payload.message },
-      }),
+      body: JSON.stringify(body),
     });
 
     if (res.ok) {

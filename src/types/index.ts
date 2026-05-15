@@ -425,10 +425,12 @@ export interface CallLog {
 export interface CommunicationLog {
   id: string;
   patientId: string;
-  type: "CALL" | "SMS" | "EMAIL" | "WHATSAPP";
+  type: "CALL" | "SMS" | "EMAIL" | "WHATSAPP" | "SYSTEM";
   direction: "INBOUND" | "OUTBOUND";
   subject: string;
   content: string;
+  mediaUrl?: string | null;
+  mediaMimeType?: string | null;
   sentById: string;
   sentByName?: string;
   createdAt: string;

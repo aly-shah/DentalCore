@@ -15,8 +15,12 @@ import { sendMessage } from "@/lib/messaging";
 import { logger } from "@/lib/logger";
 
 const schema = z.object({
-  message: z.string().min(1).max(2000),
+  message: z.string().max(2000),
   type: z.enum(["whatsapp", "sms"]).optional(),
+  mediaUrl: z.string().max(500).optional(),
+  mediaMimeType: z.string().max(120).optional(),
+}).refine((d) => d.message.trim().length > 0 || (!!d.mediaUrl && !!d.mediaMimeType), {
+  message: "Either a message or an attachment is required",
 });
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,6 +56,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       to: patient.phone,
       message: parsed.data.message,
       type: parsed.data.type ?? "whatsapp",
+      mediaUrl: parsed.data.mediaUrl,
+      mediaMimeType: parsed.data.mediaMimeType,
     });
 
     const log = await prisma.communicationLog.create({
@@ -63,6 +69,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         direction: "OUTBOUND",
         subject: "Reply",
         content: parsed.data.message,
+        mediaUrl: parsed.data.mediaUrl ?? null,
+        mediaMimeType: parsed.data.mediaMimeType ?? null,
         sentById: auth.user.id,
         sentByName: auth.user.name ?? null,
       },

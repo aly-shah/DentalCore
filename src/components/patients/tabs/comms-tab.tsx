@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare, Phone, Mail, MessageCircle, Send, Loader2, AlertTriangle, CheckCircle2,
+  Paperclip, X as XIcon, FileText, Image as ImageIcon, Volume2, Video as VideoIcon,
 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -52,13 +53,34 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const [text, setText] = useState("");
   const [channel, setChannel] = useState<"whatsapp" | "sms">("whatsapp");
   const [lastResult, setLastResult] = useState<{ channel: string; delivered: boolean } | null>(null);
+  const [attachment, setAttachment] = useState<{ url: string; mimeType: string; name: string } | null>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const upload = useMutation({
+    mutationFn: async (file: File): Promise<{ url: string; mimeType: string; name: string }> => {
+      setUploadError(null);
+      const fd = new FormData();
+      fd.append("file", file);
+      const r = await fetch(`/api/upload`, { method: "POST", body: fd });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Upload failed");
+      return { url: j.data.url, mimeType: j.data.mimeType, name: j.data.filename ?? file.name };
+    },
+    onSuccess: (data) => setAttachment(data),
+    onError: (err) => setUploadError((err as Error).message),
+  });
 
   const reply = useMutation({
     mutationFn: async () => {
       const r = await fetch(`/api/patients/${patientId}/communications/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: text.trim(), type: channel }),
+        body: JSON.stringify({
+          message: text.trim(),
+          type: channel,
+          ...(attachment ? { mediaUrl: attachment.url, mediaMimeType: attachment.mimeType } : {}),
+        }),
       });
       const j = await r.json();
       if (!j.success) throw new Error(j.error || "Failed");
@@ -66,6 +88,8 @@ export function CommsTab({ patientId }: { patientId: string }) {
     },
     onSuccess: (data) => {
       setText("");
+      setAttachment(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       setLastResult({ channel: data.channel, delivered: data.delivered });
       qc.invalidateQueries({ queryKey: ["patients", patientId, "communications"] });
       // Auto-hide the toast after a few seconds
@@ -78,7 +102,7 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const comms = ((response?.data || []) as CommunicationLog[])
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const canSend = !!phone && text.trim().length > 0 && !reply.isPending;
+  const canSend = !!phone && (text.trim().length > 0 || !!attachment) && !reply.isPending;
 
   return (
     <div data-id="PATIENT-COMMS-TAB" className="space-y-4">
@@ -114,27 +138,77 @@ export function CommsTab({ patientId }: { patientId: string }) {
             }}
             className="w-full px-3 py-2 text-sm rounded-lg border-2 border-stone-200 focus:border-emerald-400 focus:outline-none bg-stone-50/50 resize-none disabled:opacity-60 disabled:cursor-not-allowed"
           />
+
+          {/* Attachment preview chip */}
+          {attachment && (
+            <div className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-emerald-200 bg-emerald-50/60 max-w-full">
+              <MediaIcon mime={attachment.mimeType} className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+              <span className="text-[11px] font-medium text-stone-800 truncate max-w-[240px]">{attachment.name}</span>
+              <button
+                onClick={() => {
+                  setAttachment(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
+                }}
+                className="p-0.5 -mr-1 rounded hover:bg-emerald-100 text-emerald-700 transition-colors"
+                aria-label="Remove attachment"
+              >
+                <XIcon className="w-3 h-3" />
+              </button>
+            </div>
+          )}
+          {uploadError && (
+            <p className="text-[11px] text-red-600 inline-flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> {uploadError}
+            </p>
+          )}
+
+          {/* Hidden file input — triggered by paperclip button below.
+              Accept list mirrors /api/upload's allowed types. */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) upload.mutate(f);
+            }}
+            className="hidden"
+          />
+
           <div className="flex items-center justify-between gap-2 flex-wrap">
-            <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
-              {(["whatsapp", "sms"] as const).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => setChannel(c)}
-                  disabled={!phone}
-                  className={cn(
-                    "px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 disabled:opacity-60",
-                    channel === c
-                      ? c === "whatsapp"
-                        ? "bg-emerald-600 text-white shadow-sm"
-                        : "bg-blue-600 text-white shadow-sm"
-                      : "text-stone-500 hover:text-stone-700"
-                  )}
-                >
-                  {c === "whatsapp" ? <MessageCircle className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                  {c === "whatsapp" ? "WhatsApp" : "SMS"}
-                </button>
-              ))}
+            <div className="flex items-center gap-2">
+              <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
+                {(["whatsapp", "sms"] as const).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setChannel(c)}
+                    disabled={!phone}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 disabled:opacity-60",
+                      channel === c
+                        ? c === "whatsapp"
+                          ? "bg-emerald-600 text-white shadow-sm"
+                          : "bg-blue-600 text-white shadow-sm"
+                        : "text-stone-500 hover:text-stone-700"
+                    )}
+                  >
+                    {c === "whatsapp" ? <MessageCircle className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
+                    {c === "whatsapp" ? "WhatsApp" : "SMS"}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={!phone || upload.isPending}
+                title="Attach an image or PDF"
+                className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-stone-600 hover:bg-stone-100 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+              >
+                {upload.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Paperclip className="w-3.5 h-3.5" />}
+                Attach
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-[10px] text-stone-400 hidden sm:inline">
@@ -204,7 +278,12 @@ export function CommsTab({ patientId }: { patientId: string }) {
                       </Badge>
                       <Badge variant="default">{comm.type}</Badge>
                     </div>
-                    <p className="text-sm text-stone-900 whitespace-pre-wrap break-words">{comm.content}</p>
+                    {comm.mediaUrl && (
+                      <MediaPreview url={comm.mediaUrl} mimeType={comm.mediaMimeType ?? null} className="mt-1.5 mb-1" />
+                    )}
+                    {comm.content && (
+                      <p className="text-sm text-stone-900 whitespace-pre-wrap break-words">{comm.content}</p>
+                    )}
                     <p className="text-xs text-stone-500 mt-1">
                       {comm.sentByName} &middot; {formatDate(comm.createdAt)} at {formatTime(comm.createdAt)}
                     </p>
@@ -220,5 +299,71 @@ export function CommsTab({ patientId }: { patientId: string }) {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+/* ─────────────────────────────────────────────────────────── */
+
+function MediaIcon({ mime, className }: { mime: string | null; className?: string }) {
+  if (mime?.startsWith("image/")) return <ImageIcon className={className} />;
+  if (mime?.startsWith("video/")) return <VideoIcon className={className} />;
+  if (mime?.startsWith("audio/")) return <Volume2 className={className} />;
+  return <FileText className={className} />;
+}
+
+/**
+ * Inline render for media attached to a CommunicationLog row:
+ *  - image/*  → 200px-tall thumbnail, click opens the full file
+ *  - audio/*  → an HTML5 audio player
+ *  - video/*  → a small <video> with controls
+ *  - anything else (pdf / doc) → a download chip
+ */
+function MediaPreview({ url, mimeType, className }: { url: string; mimeType: string | null; className?: string }) {
+  const filename = url.split("/").pop() ?? "attachment";
+
+  if (mimeType?.startsWith("image/")) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className={cn("block", className)}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt="Attachment"
+          loading="lazy"
+          decoding="async"
+          className="max-h-48 max-w-full rounded-lg border border-stone-200 object-cover hover:shadow-md transition-shadow"
+        />
+      </a>
+    );
+  }
+
+  if (mimeType?.startsWith("audio/")) {
+    return (
+      <audio controls preload="metadata" className={cn("max-w-full", className)}>
+        <source src={url} type={mimeType} />
+      </audio>
+    );
+  }
+
+  if (mimeType?.startsWith("video/")) {
+    return (
+      <video controls preload="metadata" className={cn("max-h-64 max-w-full rounded-lg border border-stone-200", className)}>
+        <source src={url} type={mimeType} />
+      </video>
+    );
+  }
+
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={cn(
+        "inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-stone-200 bg-stone-50 hover:bg-stone-100 max-w-full transition-colors",
+        className
+      )}
+    >
+      <MediaIcon mime={mimeType} className="w-3.5 h-3.5 text-stone-600 shrink-0" />
+      <span className="text-[11px] font-medium text-stone-800 truncate max-w-[260px]">{filename}</span>
+    </a>
   );
 }

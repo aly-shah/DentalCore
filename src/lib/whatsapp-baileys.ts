@@ -108,7 +108,31 @@ async function boot() {
         ?? m.message?.extendedTextMessage?.text
         ?? m.message?.imageMessage?.caption
         ?? m.message?.videoMessage?.caption
+        ?? m.message?.documentMessage?.caption
         ?? null;
+
+      // If the envelope carries media, download it now and stash on
+      // disk under /public/uploads so the timeline can render it.
+      let mediaUrl: string | null = null;
+      let mediaMimeType: string | null = null;
+      const hasMedia = !!(
+        m.message?.imageMessage ??
+        m.message?.videoMessage ??
+        m.message?.audioMessage ??
+        m.message?.documentMessage
+      );
+      if (hasMedia) {
+        try {
+          const saved = await persistInboundMedia(m);
+          if (saved) {
+            mediaUrl = saved.url;
+            mediaMimeType = saved.mimeType;
+          }
+        } catch (err) {
+          logger.warn("inbound media persist failed", { err: String(err), id: m.key.id });
+        }
+      }
+
       try {
         await handleInboundMessage({
           id: m.key.id,
@@ -117,6 +141,8 @@ async function boot() {
           text,
           pushName: m.pushName ?? null,
           timestamp: Number(m.messageTimestamp ?? Date.now() / 1000) * 1000,
+          mediaUrl,
+          mediaMimeType,
         });
       } catch (err) {
         logger.warn("inbound dispatch failed", { err: String(err), id: m.key.id });
@@ -212,12 +238,18 @@ export async function disconnectWhatsApp(): Promise<void> {
 }
 
 /**
- * Send a text message through the QR-paired session.
- * Returns the WhatsApp message id on success, throws on failure.
+ * Send a message through the QR-paired session. Supports text and a
+ * single media attachment (image / video / document / audio) — media
+ * is identified by its MIME type. Text becomes the caption when both
+ * are supplied. Returns the WhatsApp message id on success.
  *
  * `to` should be a phone number with country code (digits only, no +).
  */
-export async function sendBaileysMessage(to: string, message: string): Promise<string> {
+export async function sendBaileysMessage(
+  to: string,
+  message: string,
+  media?: { url: string; mimeType: string },
+): Promise<string> {
   const sock = await getWhatsApp();
   if (!sock) throw new Error("WhatsApp not connected");
   if (!isWhatsAppReady()) throw new Error(`WhatsApp not ready (state=${getWhatsAppState().status})`);
@@ -226,8 +258,124 @@ export async function sendBaileysMessage(to: string, message: string): Promise<s
   if (!digits) throw new Error("Invalid phone number");
 
   const jid = `${digits}@s.whatsapp.net`;
-  const result = await sock.sendMessage(jid, { text: message });
+
+  // Resolve relative public URLs to absolute file paths so Baileys can
+  // read them from disk — Baileys' URL fetcher doesn't follow
+  // app-relative paths.
+  const mediaSource = media ? resolveMediaSource(media.url) : null;
+
+  let payload: Parameters<typeof sock.sendMessage>[1];
+  if (media && mediaSource) {
+    const caption = message?.trim() ? message : undefined;
+    const mime = media.mimeType;
+    if (mime.startsWith("image/")) {
+      payload = { image: mediaSource, caption, mimetype: mime };
+    } else if (mime.startsWith("video/")) {
+      payload = { video: mediaSource, caption, mimetype: mime };
+    } else if (mime.startsWith("audio/")) {
+      payload = { audio: mediaSource, mimetype: mime, ptt: mime === "audio/ogg" };
+    } else {
+      // PDFs, Word docs, anything else → document bubble. Filename
+      // hint comes from the URL tail so WhatsApp shows a useful label.
+      const fileName = media.url.split("/").pop() ?? "document";
+      payload = { document: mediaSource, mimetype: mime, fileName, caption };
+    }
+  } else {
+    payload = { text: message };
+  }
+
+  const result = await sock.sendMessage(jid, payload);
   return result?.key?.id ?? `baileys-${Date.now()}`;
+}
+
+/**
+ * Convert a media reference into the shape Baileys expects:
+ *  - http(s) URL → { url }
+ *  - local `/uploads/...` path → { url: file:// } pointing at the
+ *    served file on disk (since the WhatsApp client can't reach our
+ *    private network). Baileys handles file:// URLs by reading the
+ *    bytes directly.
+ */
+function resolveMediaSource(urlOrPath: string): { url: string } | null {
+  if (/^https?:\/\//i.test(urlOrPath)) return { url: urlOrPath };
+  if (urlOrPath.startsWith("/uploads/")) {
+    const filePath = path.join(process.cwd(), "public", urlOrPath);
+    return { url: `file://${filePath}` };
+  }
+  return null;
+}
+
+/**
+ * Download an inbound media message via Baileys' helper. Returns the
+ * decrypted bytes + mime type, or null if the message has no media or
+ * the decode failed (logged).
+ */
+export async function downloadInboundMedia(
+  rawMessage: unknown,
+): Promise<{ buffer: Buffer; mimeType: string; fileName?: string } | null> {
+  try {
+    const baileys = await import("@whiskeysockets/baileys");
+    const { downloadMediaMessage } = baileys;
+    const msg = rawMessage as { message?: Record<string, { mimetype?: string; fileName?: string }> };
+    const inner =
+      msg.message?.imageMessage ??
+      msg.message?.videoMessage ??
+      msg.message?.audioMessage ??
+      msg.message?.documentMessage ??
+      msg.message?.stickerMessage;
+    if (!inner) return null;
+    const buffer = await downloadMediaMessage(
+      rawMessage as Parameters<typeof downloadMediaMessage>[0],
+      "buffer",
+      {},
+    );
+    if (!buffer || !(buffer instanceof Buffer)) return null;
+    return {
+      buffer,
+      mimeType: inner.mimetype ?? "application/octet-stream",
+      fileName: inner.fileName,
+    };
+  } catch (err) {
+    logger.warn("Baileys media download failed", { err: String(err) });
+    return null;
+  }
+}
+
+/**
+ * Download an inbound media message and stash it under public/uploads
+ * so the patient timeline can render it like any other attachment.
+ * Returns the public URL + MIME type, or null on failure / no media.
+ */
+async function persistInboundMedia(rawMessage: unknown): Promise<{ url: string; mimeType: string } | null> {
+  const downloaded = await downloadInboundMedia(rawMessage);
+  if (!downloaded) return null;
+
+  const { writeFile } = await import("node:fs/promises");
+  const uploadDir = path.join(process.cwd(), "public", "uploads");
+  await mkdir(uploadDir, { recursive: true });
+
+  // Pick an extension from the MIME type, falling back to "bin" so
+  // browsers will offer a download rather than misrendering.
+  const extFromMime: Record<string, string> = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/3gpp": "3gp",
+    "audio/ogg": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "application/pdf": "pdf",
+  };
+  const ext = extFromMime[downloaded.mimeType.toLowerCase()] ?? "bin";
+
+  const filename = `wa-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const filePath = path.join(uploadDir, filename);
+  await writeFile(filePath, downloaded.buffer);
+
+  return { url: `/uploads/${filename}`, mimeType: downloaded.mimeType };
 }
 
 /** Minimal pino-compatible logger stub. Baileys logs heavily by default. */

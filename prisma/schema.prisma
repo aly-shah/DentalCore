@@ -809,17 +809,21 @@ model CallLog {
 }
 
 model CommunicationLog {
-  id         String   @id @default(cuid())
-  patientId  String
-  patient    Patient  @relation(fields: [patientId], references: [id])
-  type       String   @default("SMS")
-  direction  String   @default("OUTBOUND")
-  subject    String?
-  content    String
-  sentById   String?
-  sentBy     User?    @relation("CommunicationSentBy", fields: [sentById], references: [id], onDelete: NoAction, onUpdate: NoAction)
-  sentByName String?
-  createdAt  DateTime @default(now())
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id])
+  type          String   @default("SMS")
+  direction     String   @default("OUTBOUND")
+  subject       String?
+  content       String
+  /// Public URL of an attached image / document — null for plain text.
+  mediaUrl      String?
+  /// Original MIME type (e.g. "image/jpeg", "application/pdf").
+  mediaMimeType String?
+  sentById      String?
+  sentBy        User?    @relation("CommunicationSentBy", fields: [sentById], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  sentByName    String?
+  createdAt     DateTime @default(now())
 
   @@index([patientId, createdAt])
 }
@@ -1306,21 +1310,23 @@ model AISuggestionFeedback {
 /// Dedup'd by externalId (the WhatsApp message id) — the unique index
 /// makes the inbound handler safely re-runnable on Baileys re-deliveries.
 model UnmatchedInboundMessage {
-  id           String   @id @default(cuid())
-  tenantId     String?
-  externalId   String   @unique // wa msg id; "sms:<ref>" for SMS
-  channel      String   @default("WHATSAPP") // WHATSAPP / SMS
-  fromPhone    String // digits-only
-  fromName     String?  // sender pushName / caller id
-  content      String
-  receivedAt   DateTime @default(now())
+  id            String   @id @default(cuid())
+  tenantId      String?
+  externalId    String   @unique // wa msg id; "sms:<ref>" for SMS
+  channel       String   @default("WHATSAPP") // WHATSAPP / SMS
+  fromPhone     String // digits-only
+  fromName      String?  // sender pushName / caller id
+  content       String
+  mediaUrl      String?
+  mediaMimeType String?
+  receivedAt    DateTime @default(now())
 
-  status       UnmatchedInboundStatus @default(UNMATCHED)
-  matchedPatientId String?
-  matchedByUserId  String?
-  matchedAt    DateTime?
+  status            UnmatchedInboundStatus @default(UNMATCHED)
+  matchedPatientId  String?
+  matchedByUserId   String?
+  matchedAt         DateTime?
   dismissedByUserId String?
-  dismissedAt  DateTime?
+  dismissedAt       DateTime?
 
   createdAt    DateTime @default(now())
 

@@ -71,6 +71,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
             direction: "INBOUND",
             subject,
             content: row.content,
+            mediaUrl: row.mediaUrl,
+            mediaMimeType: row.mediaMimeType,
             sentByName: row.fromName ?? `${patient.firstName} ${patient.lastName}`,
           },
         });
