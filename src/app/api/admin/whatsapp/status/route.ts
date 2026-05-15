@@ -16,10 +16,12 @@ export async function GET() {
   if (auth.response) return auth.response;
 
   try {
-    // Side effect: kick the boot if it's not running.
-    void getWhatsApp();
+    const enabled = process.env.WHATSAPP_BAILEYS_ENABLED === "1" || process.env.WHATSAPP_BAILEYS_ENABLED === "true";
+    // Only boot when explicitly enabled — avoids spawning a WS connection
+    // in dev / unconfigured environments.
+    if (enabled) void getWhatsApp();
     const state = getWhatsAppState();
-    return NextResponse.json({ success: true, data: state });
+    return NextResponse.json({ success: true, data: { enabled, ...state } });
   } catch (err) {
     logger.api("GET", "/api/admin/whatsapp/status", err);
     return NextResponse.json({ success: false, error: "internal_error" }, { status: 500 });

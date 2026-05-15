@@ -5,6 +5,7 @@ import {
   BarChart3, UserCog, Brain, Sparkles, Smile, Clock,
 } from "lucide-react";
 import { StatCard } from "@/components/ui/stat-card";
+import { WhatsAppStatusBadge } from "@/components/admin/whatsapp-status-badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
@@ -76,12 +77,18 @@ export function AdminDashboard() {
     <div className="space-y-4 sm:space-y-6 animate-fade-in" data-id="DASH-ADMIN">
       {/* Welcome Card */}
       <div className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-2xl p-4 sm:p-6 text-white shadow-sm">
-        <div className="flex items-center gap-3 mb-1">
-          <Sparkles className="w-5 h-5 text-blue-200" />
-          <p className="text-blue-100 text-sm">Welcome back</p>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <div className="flex items-center gap-3 mb-1">
+              <Sparkles className="w-5 h-5 text-blue-200" />
+              <p className="text-blue-100 text-sm">Welcome back</p>
+            </div>
+            <h1 className="text-lg sm:text-xl font-semibold">{greeting}, {user?.name || "there"}</h1>
+            <p className="text-blue-100 mt-1 text-sm">{todayLabel} &mdash; Here&apos;s your clinic at a glance.</p>
+          </div>
+          {/* WhatsApp connection status — hidden when integration disabled. */}
+          <WhatsAppStatusBadge className="bg-white/90 backdrop-blur shadow-sm" />
         </div>
-        <h1 className="text-lg sm:text-xl font-semibold">{greeting}, {user?.name || "there"}</h1>
-        <p className="text-blue-100 mt-1 text-sm">{todayLabel} &mdash; Here&apos;s your clinic at a glance.</p>
       </div>
 
       {/* Error banner */}
