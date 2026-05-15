@@ -83,7 +83,10 @@ const extraRoutes: Record<string, { label: string; href: string; icon: string; a
   "/admin/ai-usage":  [{ label: "AI Usage", href: "/admin/ai-usage", icon: "Sparkles", afterModule: "MOD-AI-TRANSCRIPTION", roles: ["ADMIN", "SUPER_ADMIN"] }],
   "/admin/audit":     [{ label: "Audit Log", href: "/admin/audit", icon: "Shield", afterModule: "MOD-ADMIN", roles: ["ADMIN", "SUPER_ADMIN"] }],
   "/admin/tenants":   [{ label: "Tenants", href: "/admin/tenants", icon: "Building2", afterModule: "MOD-ADMIN", roles: ["SUPER_ADMIN"] }],
-  "/admin/whatsapp":  [{ label: "WhatsApp", href: "/admin/whatsapp", icon: "Phone", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN"] }],
+  "/admin/whatsapp":  [
+    { label: "WhatsApp", href: "/admin/whatsapp", icon: "Phone", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN"] },
+    { label: "WA Inbox", href: "/admin/whatsapp/inbox", icon: "Bell", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN", "RECEPTIONIST"] },
+  ],
   "/pharmacy": [{ label: "Dental Supplies", href: "/pharmacy", icon: "Pill", afterModule: "MOD-BILLING", roles: ["ADMIN", "SUPER_ADMIN", "BILLING"] }],
 };
 

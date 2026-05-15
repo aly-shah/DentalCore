@@ -6,10 +6,11 @@
  * box. The Business API path is NOT managed here; it's env-driven.
  */
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageCircle, AlertTriangle, CheckCircle2, Loader2, LogOut, Send,
-  RefreshCw, ShieldAlert,
+  RefreshCw, ShieldAlert, Inbox,
 } from "lucide-react";
 import { Button, Card } from "@/components/ui";
 import { cn } from "@/lib/utils";
@@ -59,7 +60,14 @@ export default function WhatsAppAdminPage() {
             <p className="text-sm text-stone-500 mt-0.5">QR-code pair your clinic phone (no Business API required)</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href="/admin/whatsapp/inbox"
+            className="px-3 py-2 rounded-lg text-xs font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition-colors flex items-center gap-1.5"
+            title="Inbound messages from unknown numbers"
+          >
+            <Inbox className="w-3.5 h-3.5" /> Inbox
+          </Link>
           <button
             onClick={() => statusQuery.refetch()}
             className="p-2 rounded-lg bg-stone-100 hover:bg-stone-200 text-stone-600 transition-colors"

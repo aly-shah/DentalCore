@@ -106,12 +106,28 @@ export async function handleInboundMessage(msg: InboundMessage): Promise<void> {
     const patient = await findPatientByPhone(msg.remoteJid);
 
     if (!patient) {
-      // Unmatched inbound — still useful to log somewhere for the
-      // front desk. We'd need a separate "unmatched inbox" table for
-      // that; for now, just info-log and drop. Front desk can search
-      // by phone in /api/search.
-      logger.info("Inbound WA from unknown sender", {
-        from: msg.remoteJid.replace(/@.*$/, ""),
+      // Unmatched inbound — queue in UnmatchedInboundMessage so the
+      // front desk can triage from /admin/whatsapp/inbox. The
+      // externalId unique constraint makes this safely re-runnable
+      // on Baileys re-deliveries.
+      const digits = msg.remoteJid.replace(/@.*$/, "").replace(/[^0-9]/g, "");
+      try {
+        await prisma.unmatchedInboundMessage.create({
+          data: {
+            externalId: msg.id,
+            channel: "WHATSAPP",
+            fromPhone: digits,
+            fromName: msg.pushName ?? null,
+            content: msg.text,
+            receivedAt: new Date(msg.timestamp),
+          },
+        });
+      } catch (err) {
+        const code = (err as { code?: string })?.code;
+        if (code !== "P2002") throw err; // anything other than dup → bubble
+      }
+      logger.info("Inbound WA queued in unmatched inbox", {
+        from: digits,
         pushName: msg.pushName,
         preview: msg.text.slice(0, 80),
       });

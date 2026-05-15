@@ -1300,6 +1300,41 @@ model AISuggestionFeedback {
   @@index([suggestionLogId])
 }
 
+/// Inbound WhatsApp / SMS messages that couldn't be matched to a known
+/// patient by phone number. The front desk reviews these and either
+/// links them to a patient (MATCHED) or dismisses them (DISMISSED).
+/// Dedup'd by externalId (the WhatsApp message id) — the unique index
+/// makes the inbound handler safely re-runnable on Baileys re-deliveries.
+model UnmatchedInboundMessage {
+  id           String   @id @default(cuid())
+  tenantId     String?
+  externalId   String   @unique // wa msg id; "sms:<ref>" for SMS
+  channel      String   @default("WHATSAPP") // WHATSAPP / SMS
+  fromPhone    String // digits-only
+  fromName     String?  // sender pushName / caller id
+  content      String
+  receivedAt   DateTime @default(now())
+
+  status       UnmatchedInboundStatus @default(UNMATCHED)
+  matchedPatientId String?
+  matchedByUserId  String?
+  matchedAt    DateTime?
+  dismissedByUserId String?
+  dismissedAt  DateTime?
+
+  createdAt    DateTime @default(now())
+
+  @@index([tenantId, status, receivedAt])
+  @@index([fromPhone])
+  @@index([status])
+}
+
+enum UnmatchedInboundStatus {
+  UNMATCHED
+  MATCHED
+  DISMISSED
+}
+
 // =====================================================================
 // Enums — converted from stringly-typed status fields. Adding new values
 // here is a schema migration, which is the intent: callers can no longer
