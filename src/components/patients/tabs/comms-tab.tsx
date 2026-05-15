@@ -22,6 +22,20 @@ const typeColor: Record<string, string> = {
   WHATSAPP: "text-emerald-500 bg-[#E6FAF5]",
 };
 
+/**
+ * Many of our subject values are machine-generated dedup keys (e.g.
+ * `appt-reminder:APT-001:2026-05-13`). Render a friendly label
+ * when we recognise the prefix, otherwise fall back to the raw value.
+ */
+function prettySubject(subject: string | null | undefined, direction: string): string {
+  if (!subject) return direction === "INBOUND" ? "Reply" : "Message";
+  if (subject.startsWith("appt-reminder:"))    return "Appointment reminder";
+  if (subject.startsWith("followup-overdue:")) return "Follow-up reminder";
+  if (subject.startsWith("package-expiring:")) return "Package expiring";
+  if (subject.startsWith("wa-inbound:"))       return "Inbound message";
+  return subject;
+}
+
 export function CommsTab({ patientId }: { patientId: string }) {
   const { data: response, isLoading } = usePatientCommunications(patientId);
 
@@ -50,8 +64,8 @@ export function CommsTab({ patientId }: { patientId: string }) {
                     {typeIcon[comm.type]}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-sm">{comm.subject}</span>
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-medium text-sm">{prettySubject(comm.subject, comm.direction)}</span>
                       <Badge variant={comm.direction === "OUTBOUND" ? "info" : "success"}>
                         {comm.direction}
                       </Badge>

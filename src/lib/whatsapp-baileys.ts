@@ -23,6 +23,7 @@ import { existsSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import * as QRCode from "qrcode";
 import { logger } from "@/lib/logger";
+import { handleInboundMessage } from "./whatsapp-inbound";
 
 // Baileys is a heavy native-ish dep — we import it dynamically inside
 // the boot function so that Next.js doesn't try to bundle it for the
@@ -92,6 +93,36 @@ async function boot() {
   });
 
   sock.ev.on("creds.update", saveCreds);
+
+  // Inbound message handler. We only act on `type === "notify"` so the
+  // history-sync replay that Baileys delivers right after reconnect
+  // doesn't re-trigger notifications + log entries for old messages.
+  sock.ev.on("messages.upsert", async (event) => {
+    if (event.type !== "notify") return;
+    for (const m of event.messages) {
+      if (!m.key || !m.key.id || !m.key.remoteJid) continue;
+      if (m.key.fromMe) continue;
+      // Extract plain text from the various message envelopes Baileys uses.
+      const text =
+        m.message?.conversation
+        ?? m.message?.extendedTextMessage?.text
+        ?? m.message?.imageMessage?.caption
+        ?? m.message?.videoMessage?.caption
+        ?? null;
+      try {
+        await handleInboundMessage({
+          id: m.key.id,
+          remoteJid: m.key.remoteJid,
+          fromMe: !!m.key.fromMe,
+          text,
+          pushName: m.pushName ?? null,
+          timestamp: Number(m.messageTimestamp ?? Date.now() / 1000) * 1000,
+        });
+      } catch (err) {
+        logger.warn("inbound dispatch failed", { err: String(err), id: m.key.id });
+      }
+    }
+  });
 
   sock.ev.on("connection.update", async (update) => {
     const { connection, lastDisconnect, qr } = update;

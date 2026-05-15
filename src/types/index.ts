@@ -469,7 +469,7 @@ export interface Notification {
   userId: string;
   title: string;
   message: string;
-  type: "APPOINTMENT" | "BILLING" | "LAB" | "FOLLOW_UP" | "SYSTEM" | "ALERT";
+  type: "APPOINTMENT" | "BILLING" | "LAB" | "FOLLOW_UP" | "SYSTEM" | "ALERT" | "COMMUNICATION";
   isRead: boolean;
   link?: string;
   createdAt: string;
