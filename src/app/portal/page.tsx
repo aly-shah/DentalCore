@@ -9,7 +9,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, Pill, Receipt, CalendarClock, AlertTriangle,
-  CheckCircle2, Stethoscope, Loader2,
+  CheckCircle2, Stethoscope, Loader2, CreditCard,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -79,6 +79,27 @@ function PortalInner() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PortalData | null>(null);
   const [tab, setTab] = useState<"visits" | "billing" | "rx" | "followups">("visits");
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
+
+  const pay = async (invoiceId: string) => {
+    if (!token) return;
+    setPayingId(invoiceId);
+    setPayError(null);
+    try {
+      const r = await fetch(`/api/portal/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ t: token, invoiceId }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "checkout_failed");
+      window.location.href = j.data.checkoutUrl;
+    } catch (e) {
+      setPayError((e as Error).message);
+      setPayingId(null);
+    }
+  };
 
   useEffect(() => {
     if (!token) {
@@ -236,30 +257,52 @@ function PortalInner() {
 
         {tab === "billing" && (
           <div className="space-y-2">
+            {payError && (
+              <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                Couldn't start payment: {payError}
+              </p>
+            )}
             {data.invoices.length === 0
               ? <Empty text="No invoices on record" />
-              : data.invoices.map((inv) => (
-                <Card key={inv.id}>
-                  <CardContent className="p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
-                      <Receipt className="w-5 h-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-stone-900 truncate">{inv.invoiceNumber}</p>
-                      <p className="text-xs text-stone-400">{formatDate(inv.createdAt)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-bold text-stone-900">{formatCurrency(inv.total)}</p>
-                      <Badge
-                        variant={inv.status === "PAID" ? "success" : inv.status === "OVERDUE" ? "danger" : "warning"}
-                        className="text-[10px]"
-                      >
-                        {inv.status}
-                      </Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              : data.invoices.map((inv) => {
+                const payable = inv.balanceDue > 0 && inv.status !== "PAID" && inv.status !== "CANCELLED";
+                return (
+                  <Card key={inv.id}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-violet-50 flex items-center justify-center text-violet-600">
+                          <Receipt className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-stone-900 truncate">{inv.invoiceNumber}</p>
+                          <p className="text-xs text-stone-400">{formatDate(inv.createdAt)}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-stone-900">{formatCurrency(inv.total)}</p>
+                          <Badge
+                            variant={inv.status === "PAID" ? "success" : inv.status === "OVERDUE" ? "danger" : "warning"}
+                            className="text-[10px]"
+                          >
+                            {inv.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      {payable && (
+                        <button
+                          onClick={() => pay(inv.id)}
+                          disabled={payingId === inv.id}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold disabled:opacity-60 hover:bg-blue-700 transition-colors"
+                        >
+                          {payingId === inv.id
+                            ? <Loader2 className="w-4 h-4 animate-spin" />
+                            : <CreditCard className="w-4 h-4" />}
+                          Pay {formatCurrency(inv.balanceDue)}
+                        </button>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
           </div>
         )}
 

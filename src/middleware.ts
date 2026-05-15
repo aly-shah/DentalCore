@@ -15,6 +15,8 @@ const publicPaths = [
   "/api/auth/login",
   "/api/auth/signup",
   "/portal",
+  "/api/portal",         // token-scoped portal endpoints (data, checkout)
+  "/api/webhooks",       // payment gateway webhooks (verified by signature)
   "/api/app/session",
   "/api/health",
   "/api/cron/reminders",

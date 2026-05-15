@@ -15,8 +15,9 @@ import { sendMessage } from "@/lib/messaging";
 import { logger } from "@/lib/logger";
 
 const schema = z.object({
-  message: z.string().max(2000),
-  type: z.enum(["whatsapp", "sms"]).optional(),
+  message: z.string().max(5000),
+  type: z.enum(["whatsapp", "sms", "email"]).optional(),
+  subject: z.string().max(200).optional(),
   mediaUrl: z.string().max(500).optional(),
   mediaMimeType: z.string().max(120).optional(),
 }).refine((d) => d.message.trim().length > 0 || (!!d.mediaUrl && !!d.mediaMimeType), {
@@ -40,12 +41,16 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
     const patient = await prisma.patient.findUnique({
       where: { id },
-      select: { id: true, firstName: true, lastName: true, phone: true, tenantId: true },
+      select: { id: true, firstName: true, lastName: true, phone: true, email: true, tenantId: true },
     });
     if (!patient) {
       return NextResponse.json({ success: false, error: "patient_not_found" }, { status: 404 });
     }
-    if (!patient.phone) {
+    const channel = parsed.data.type ?? "whatsapp";
+    if (channel === "email" && !patient.email) {
+      return NextResponse.json({ success: false, error: "no_email_on_file" }, { status: 400 });
+    }
+    if (channel !== "email" && !patient.phone) {
       return NextResponse.json({ success: false, error: "no_phone_on_file" }, { status: 400 });
     }
 
@@ -53,9 +58,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // success+channel even when no gateway is configured (logs to
     // console), so we still want to record what was attempted.
     const result = await sendMessage({
-      to: patient.phone,
+      to: channel === "email" ? patient.email! : patient.phone!,
       message: parsed.data.message,
-      type: parsed.data.type ?? "whatsapp",
+      type: channel,
+      subject: parsed.data.subject,
       mediaUrl: parsed.data.mediaUrl,
       mediaMimeType: parsed.data.mediaMimeType,
     });
@@ -65,9 +71,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         patientId: patient.id,
         type: result.channel === "sms" ? "SMS"
             : result.channel === "whatsapp" ? "WHATSAPP"
+            : result.channel === "email" ? "EMAIL"
             : "SYSTEM", // "none" channel — logged only, no gateway
         direction: "OUTBOUND",
-        subject: "Reply",
+        subject: parsed.data.subject ?? "Reply",
         content: parsed.data.message,
         mediaUrl: parsed.data.mediaUrl ?? null,
         mediaMimeType: parsed.data.mediaMimeType ?? null,

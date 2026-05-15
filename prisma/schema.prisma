@@ -672,9 +672,10 @@ model Invoice {
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 
-  items    InvoiceItem[]
-  payments Payment[]
-  refunds  Refund[]
+  items           InvoiceItem[]
+  payments        Payment[]
+  refunds         Refund[]
+  paymentSessions PaymentSession[]
 
   @@index([patientId, status])
   @@index([branchId, createdAt])
@@ -709,8 +710,39 @@ model Payment {
   processedAt     DateTime      @default(now())
   createdAt       DateTime      @default(now())
 
+  /// Gateway provenance for online payments. Null when the receptionist
+  /// recorded a cash/in-person payment.
+  gatewayProvider     String?   // "stripe" | "jazzcash" | "easypaisa" | null
+  gatewayReference    String?   // payment_intent id, session id, etc.
+  gatewayFeeCents     Int?      // gateway fee, if reported by the provider
+
   @@index([invoiceId])
   @@index([processedAt])
+  @@index([gatewayProvider, gatewayReference])
+}
+
+/// Tracks in-flight checkout sessions. Created when a payer initiates
+/// online payment; the webhook flips status → SUCCEEDED and creates the
+/// matching Payment row. Idempotent on `gatewayReference`.
+model PaymentSession {
+  id                String   @id @default(cuid())
+  tenantId          String?
+  invoiceId         String
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  provider          String   // "stripe" | "jazzcash" | "easypaisa"
+  gatewayReference  String   @unique  // session/intent id
+  amount            Float    // amount the session was created for, in major units
+  currency          String   @default("USD")
+  status            String   @default("PENDING") // PENDING | SUCCEEDED | FAILED | EXPIRED | CANCELLED
+  checkoutUrl       String?  // hosted-payment-page URL; null for inline flows
+  returnUrl         String?
+  createdById       String?
+  createdAt         DateTime @default(now())
+  completedAt       DateTime?
+
+  @@index([invoiceId])
+  @@index([status])
+  @@index([tenantId])
 }
 
 model Refund {

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Receipt, CreditCard, RotateCcw, Printer } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Receipt, CreditCard, RotateCcw, Printer, Link2, Loader2, Mail } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -27,6 +28,53 @@ const statusVariant: Record<string, "success" | "warning" | "danger" | "info" | 
 export function BillingTab({ patientId }: { patientId: string }) {
   const { data: response, isLoading } = usePatientBilling(patientId);
   const [payInvoice, setPayInvoice] = useState<Invoice | null>(null);
+  const [linkFor, setLinkFor] = useState<string | null>(null);
+
+  const [emailingId, setEmailingId] = useState<string | null>(null);
+
+  const emailInvoice = useMutation({
+    mutationFn: async (invoiceId: string): Promise<{ sentTo: string }> => {
+      setEmailingId(invoiceId);
+      const r = await fetch(`/api/billing/invoices/${invoiceId}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ includePayLink: true }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Email failed");
+      return j.data;
+    },
+    onSuccess: (data) => {
+      alert(`Invoice emailed to ${data.sentTo}`);
+      setEmailingId(null);
+    },
+    onError: (err) => {
+      alert(`Couldn't email invoice: ${(err as Error).message}`);
+      setEmailingId(null);
+    },
+  });
+
+  const onlineCheckout = useMutation({
+    mutationFn: async (invoiceId: string): Promise<{ checkoutUrl: string }> => {
+      setLinkFor(invoiceId);
+      const r = await fetch(`/api/payments/checkout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ invoiceId }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to create checkout");
+      return j.data;
+    },
+    onSuccess: (data) => {
+      window.open(data.checkoutUrl, "_blank");
+      setLinkFor(null);
+    },
+    onError: (err) => {
+      alert(`Couldn't start checkout: ${(err as Error).message}`);
+      setLinkFor(null);
+    },
+  });
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -97,8 +145,21 @@ export function BillingTab({ patientId }: { patientId: string }) {
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           {canPay(inv) && (
-                            <Button size="sm" variant="ghost" onClick={() => setPayInvoice(inv)} title="Collect Payment">
+                            <Button size="sm" variant="ghost" onClick={() => setPayInvoice(inv)} title="Collect payment (in-person)">
                               <CreditCard className="w-3.5 h-3.5 text-blue-600" />
+                            </Button>
+                          )}
+                          {canPay(inv) && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => onlineCheckout.mutate(inv.id)}
+                              disabled={onlineCheckout.isPending && linkFor === inv.id}
+                              title="Generate online pay link"
+                            >
+                              {onlineCheckout.isPending && linkFor === inv.id
+                                ? <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+                                : <Link2 className="w-3.5 h-3.5 text-emerald-600" />}
                             </Button>
                           )}
                           <Button
@@ -108,6 +169,17 @@ export function BillingTab({ patientId }: { patientId: string }) {
                             title="Print / Save as PDF"
                           >
                             <Printer className="w-3.5 h-3.5 text-stone-600" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => emailInvoice.mutate(inv.id)}
+                            disabled={emailInvoice.isPending && emailingId === inv.id}
+                            title="Email invoice (with pay link)"
+                          >
+                            {emailInvoice.isPending && emailingId === inv.id
+                              ? <Loader2 className="w-3.5 h-3.5 text-amber-600 animate-spin" />
+                              : <Mail className="w-3.5 h-3.5 text-amber-600" />}
                           </Button>
                         </div>
                       </TableCell>

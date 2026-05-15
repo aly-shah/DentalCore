@@ -48,11 +48,13 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const qc = useQueryClient();
   const { data: response, isLoading } = usePatientCommunications(patientId);
   const { data: patientRes } = usePatient(patientId);
-  const patient = (patientRes?.data ?? null) as { id: string; firstName: string; phone: string | null } | null;
+  const patient = (patientRes?.data ?? null) as { id: string; firstName: string; phone: string | null; email: string | null } | null;
   const phone = patient?.phone ?? null;
+  const email = patient?.email ?? null;
 
   const [text, setText] = useState("");
-  const [channel, setChannel] = useState<"whatsapp" | "sms">("whatsapp");
+  const [subject, setSubject] = useState("");
+  const [channel, setChannel] = useState<"whatsapp" | "sms" | "email">("whatsapp");
   const [lastResult, setLastResult] = useState<{ channel: string; delivered: boolean } | null>(null);
   const [attachment, setAttachment] = useState<{ url: string; mimeType: string; name: string } | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -135,7 +137,6 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    if (!phone) return;
     const f = e.dataTransfer.files?.[0];
     if (f) upload.mutate(f);
   };
@@ -148,6 +149,7 @@ export function CommsTab({ patientId }: { patientId: string }) {
         body: JSON.stringify({
           message: text.trim(),
           type: channel,
+          ...(channel === "email" && subject.trim() ? { subject: subject.trim() } : {}),
           ...(attachment ? { mediaUrl: attachment.url, mediaMimeType: attachment.mimeType } : {}),
         }),
       });
@@ -157,6 +159,7 @@ export function CommsTab({ patientId }: { patientId: string }) {
     },
     onSuccess: (data) => {
       setText("");
+      setSubject("");
       setAttachment(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       setLastResult({ channel: data.channel, delivered: data.delivered });
@@ -171,13 +174,14 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const comms = ((response?.data || []) as CommunicationLog[])
     .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
-  const canSend = !!phone && (text.trim().length > 0 || !!attachment) && !reply.isPending;
+  const hasRecipient = channel === "email" ? !!email : !!phone;
+  const canSend = hasRecipient && (text.trim().length > 0 || !!attachment) && !reply.isPending;
 
   return (
     <div data-id="PATIENT-COMMS-TAB" className="space-y-4">
       {/* ───── Reply composer ───── */}
       <div
-        onDragOver={(e) => { e.preventDefault(); if (phone) setDragOver(true); }}
+        onDragOver={(e) => { e.preventDefault(); if (hasRecipient) setDragOver(true); }}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
         className={cn(
@@ -197,25 +201,37 @@ export function CommsTab({ patientId }: { patientId: string }) {
           <div className="flex items-center gap-2">
             <Send className="w-4 h-4 text-emerald-600" />
             <h3 className="text-sm font-semibold text-stone-900">Send a message</h3>
-            {phone ? (
-              <span className="text-[10px] text-stone-400 font-mono ml-auto">to {phone}</span>
+            {hasRecipient ? (
+              <span className="text-[10px] text-stone-400 font-mono ml-auto truncate max-w-[180px]">
+                to {channel === "email" ? email : phone}
+              </span>
             ) : (
               <span className="text-[10px] text-amber-600 font-semibold ml-auto inline-flex items-center gap-1">
-                <AlertTriangle className="w-3 h-3" /> No phone on file
+                <AlertTriangle className="w-3 h-3" /> No {channel === "email" ? "email" : "phone"} on file
               </span>
             )}
           </div>
         </CardHeader>
         <CardContent className="space-y-2.5">
+          {channel === "email" && (
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Subject (optional)"
+              disabled={!email}
+              className="w-full px-3 py-2 text-sm rounded-lg border-2 border-stone-200 focus:border-emerald-400 focus:outline-none bg-stone-50/50 disabled:opacity-60"
+            />
+          )}
           <textarea
             ref={textareaRef}
             rows={3}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            placeholder={phone
+            placeholder={hasRecipient
               ? "Type your message…  (press / to focus, ⌘⏎ to send)"
-              : "Add a phone number on the patient profile to enable messaging."}
-            disabled={!phone}
+              : `Add ${channel === "email" ? "an email" : "a phone number"} on the patient profile to enable messaging.`}
+            disabled={!hasRecipient}
             onKeyDown={(e) => {
               if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canSend) {
                 e.preventDefault();
@@ -275,25 +291,31 @@ export function CommsTab({ patientId }: { patientId: string }) {
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
               <div className="inline-flex bg-stone-100 rounded-lg p-0.5">
-                {(["whatsapp", "sms"] as const).map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setChannel(c)}
-                    disabled={!phone}
-                    className={cn(
-                      "px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 disabled:opacity-60",
-                      channel === c
-                        ? c === "whatsapp"
-                          ? "bg-emerald-600 text-white shadow-sm"
-                          : "bg-blue-600 text-white shadow-sm"
-                        : "text-stone-500 hover:text-stone-700"
-                    )}
-                  >
-                    {c === "whatsapp" ? <MessageCircle className="w-3 h-3" /> : <MessageSquare className="w-3 h-3" />}
-                    {c === "whatsapp" ? "WhatsApp" : "SMS"}
-                  </button>
-                ))}
+                {(["whatsapp", "sms", "email"] as const).map((c) => {
+                  const disabled = c === "email" ? !email : !phone;
+                  const activeStyle =
+                    c === "whatsapp" ? "bg-emerald-600 text-white shadow-sm" :
+                    c === "sms"      ? "bg-blue-600 text-white shadow-sm" :
+                                       "bg-amber-600 text-white shadow-sm";
+                  return (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setChannel(c)}
+                      disabled={disabled}
+                      title={disabled ? `No ${c === "email" ? "email" : "phone"} on file` : undefined}
+                      className={cn(
+                        "px-3 py-1.5 rounded-md text-[11px] font-bold transition-all flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed",
+                        channel === c ? activeStyle : "text-stone-500 hover:text-stone-700"
+                      )}
+                    >
+                      {c === "whatsapp" ? <MessageCircle className="w-3 h-3" />
+                        : c === "sms"   ? <MessageSquare className="w-3 h-3" />
+                                        : <Mail className="w-3 h-3" />}
+                      {c === "whatsapp" ? "WhatsApp" : c === "sms" ? "SMS" : "Email"}
+                    </button>
+                  );
+                })}
               </div>
               <button
                 onClick={() => fileInputRef.current?.click()}
