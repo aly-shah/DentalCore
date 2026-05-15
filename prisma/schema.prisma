@@ -114,14 +114,15 @@ model Branch {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users        User[]
-  patients     Patient[]
-  appts        Appointment[]
-  rooms        Room[]
-  leads        Lead[]
-  invoices     Invoice[]
-  products     Product[]
-  blockedSlots BlockedSlot[]
+  users            User[]
+  patients         Patient[]
+  appts            Appointment[]
+  rooms            Room[]
+  leads            Lead[]
+  invoices         Invoice[]
+  products         Product[]
+  blockedSlots     BlockedSlot[]
+  bookingRequests  BookingRequest[]
 
   @@index([tenantId])
 }
@@ -170,6 +171,7 @@ model User {
   refundsApproved     Refund[]           @relation("RefundApprovedBy")
   documentsUploaded   PatientDocument[]  @relation("DocumentUploadedBy")
   communicationsSent  CommunicationLog[] @relation("CommunicationSentBy")
+  bookingRequests     BookingRequest[]   @relation("BookingRequestDoctor")
 
   @@index([tenantId])
 }
@@ -237,8 +239,71 @@ model Patient {
   dentalCharts      DentalChart[]
   treatmentPlans    TreatmentPlan[]
   portalTokens      PatientPortalToken[]
+  bookingRequests   BookingRequest[]
 
   @@index([tenantId])
+}
+
+/// Inbound booking requests submitted via the public /book page.
+/// They land in the PENDING state for the front-desk to triage, then
+/// either become CONFIRMED (an Appointment + Lead/Patient are created
+/// in a transaction) or REJECTED with a reason. The same record stays
+/// around for analytics — never delete on reject.
+model BookingRequest {
+  id              String    @id @default(cuid())
+  tenantId        String?
+  branchId        String?
+  branch          Branch?   @relation(fields: [branchId], references: [id])
+
+  /// Snapshot of who's asking. We don't require a Patient row up front
+  /// because most online bookings come from new leads.
+  name            String
+  phone           String
+  email           String?
+
+  /// Optional — if the booker recognised an existing Patient by code.
+  patientId       String?
+  patient         Patient?  @relation(fields: [patientId], references: [id])
+
+  /// Treatment / reason chosen on the form. Treatment is referenced
+  /// loosely (no FK cascade) so deleting the master row doesn't blow
+  /// away the historical request.
+  treatmentId     String?
+  treatmentName   String?
+  reason          String?
+  notes           String?
+
+  /// Doctor preference. Null means "any available doctor".
+  doctorId        String?
+  doctor          User?     @relation("BookingRequestDoctor", fields: [doctorId], references: [id])
+
+  preferredDate   DateTime
+  preferredStart  String    // HH:MM
+  preferredEnd    String    // HH:MM (start + treatment.duration)
+
+  status          String    @default("PENDING") // PENDING | CONFIRMED | REJECTED | CANCELLED
+  source          String    @default("web")     // web | portal | walkin | phone
+
+  /// Set when a staffer accepts; the resulting Appointment is linked
+  /// here so we can show "booked → APT-xxxx" on the inbox.
+  confirmedAt        DateTime?
+  confirmedById      String?
+  appointmentId      String?   @unique
+  appointment        Appointment? @relation(fields: [appointmentId], references: [id])
+  rejectedAt         DateTime?
+  rejectedById       String?
+  rejectionReason    String?
+
+  /// Lead row generated for new walk-ins. Re-uses the existing CRM
+  /// pipeline (status filters, conversion analytics).
+  leadId             String?
+
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([status, createdAt])
+  @@index([tenantId])
+  @@index([branchId, preferredDate])
 }
 
 /// Per-patient access tokens that authorize the read-only Patient Portal.
@@ -483,6 +548,7 @@ model Appointment {
   aiTranscription  AITranscription?
   followUps        FollowUp[]
   triage           Triage?
+  bookingRequest   BookingRequest?
 
   @@index([date, doctorId])
   @@index([branchId, date])

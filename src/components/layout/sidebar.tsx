@@ -13,7 +13,7 @@ import {
   Stethoscope, Building2, Package, Brain, Settings,
   LogOut, ChevronLeft, Menu, DoorOpen,
   FlaskConical, HeartPulse, Receipt, PhoneCall, Clock, Activity,
-  Sparkles, X, Bell, Camera, FileText, Shield, Pill, Inbox,
+  Sparkles, X, Bell, Camera, FileText, Shield, Pill, Inbox, CalendarCheck,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -22,7 +22,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Users, Calendar, CreditCard, Phone, UserCog,
   Stethoscope, Building2, Package, Brain, Settings,
   DoorOpen, FlaskConical, HeartPulse, Receipt, PhoneCall,
-  Clock, Activity, Sparkles, Bell, Camera, FileText, Shield, Pill, Inbox,
+  Clock, Activity, Sparkles, Bell, Camera, FileText, Shield, Pill, Inbox, CalendarCheck,
   CalendarClock: Clock,
 };
 
@@ -87,6 +87,9 @@ const extraRoutes: Record<string, { label: string; href: string; icon: string; a
     { label: "Messages", href: "/admin/messages", icon: "Inbox", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR", "RECEPTIONIST"] },
     { label: "WhatsApp", href: "/admin/whatsapp", icon: "Phone", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN"] },
     { label: "WA Inbox", href: "/admin/whatsapp/inbox", icon: "Bell", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN", "RECEPTIONIST"] },
+  ],
+  "/admin/booking-requests": [
+    { label: "Online Bookings", href: "/admin/booking-requests", icon: "CalendarCheck", afterModule: "MOD-APPOINTMENT", roles: ["ADMIN", "SUPER_ADMIN", "RECEPTIONIST", "DOCTOR"] },
   ],
   "/pharmacy": [{ label: "Dental Supplies", href: "/pharmacy", icon: "Pill", afterModule: "MOD-BILLING", roles: ["ADMIN", "SUPER_ADMIN", "BILLING"] }],
 };
