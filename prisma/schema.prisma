@@ -236,8 +236,27 @@ model Patient {
   beforeAfterImages BeforeAfterImage[]
   dentalCharts      DentalChart[]
   treatmentPlans    TreatmentPlan[]
+  portalTokens      PatientPortalToken[]
 
   @@index([tenantId])
+}
+
+/// Per-patient access tokens that authorize the read-only Patient Portal.
+/// The token IS the credential — anyone with it can view the patient's
+/// data, so the admin should send it over WhatsApp/SMS to the patient's
+/// known phone, and revoke when the link is compromised.
+model PatientPortalToken {
+  id          String    @id @default(cuid())
+  patientId   String
+  patient     Patient   @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  token       String    @unique
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  createdById String?
+
+  @@index([patientId])
 }
 
 model BeforeAfterImage {

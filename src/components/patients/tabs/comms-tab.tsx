@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare, Phone, Mail, MessageCircle, Send, Loader2, AlertTriangle, CheckCircle2,
   Paperclip, X as XIcon, FileText, Image as ImageIcon, Volume2, Video as VideoIcon,
+  Sparkles, Link2,
 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +58,48 @@ export function CommsTab({ patientId }: { patientId: string }) {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const [draftMeta, setDraftMeta] = useState<{
+    confidence: "LOW" | "MEDIUM" | "HIGH";
+    intent: string;
+    suggestionLogId: string;
+  } | null>(null);
+
+  const portalLink = useMutation({
+    mutationFn: async (): Promise<{ url: string }> => {
+      const r = await fetch(`/api/admin/patients/${patientId}/portal-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revokeExisting: false, expiresInDays: 90 }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed to generate link");
+      return j.data;
+    },
+    onSuccess: (data) => {
+      // Append to the textarea (or seed if empty) so the user can review/edit before sending.
+      const blurb = `Here's your DentaCore portal: ${data.url}`;
+      setText((t) => (t.trim() ? `${t.trim()}\n${blurb}` : blurb));
+    },
+  });
+
+  const draftAi = useMutation({
+    mutationFn: async (): Promise<{ reply: string; confidence: "LOW" | "MEDIUM" | "HIGH"; intent: string; suggestionLogId: string }> => {
+      const r = await fetch(`/api/ai/draft-reply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patientId }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Draft failed");
+      return j.data;
+    },
+    onSuccess: (data) => {
+      setText(data.reply);
+      setDraftMeta({ confidence: data.confidence, intent: data.intent, suggestionLogId: data.suggestionLogId });
+      setTimeout(() => setDraftMeta(null), 8000);
+    },
+  });
+
   const upload = useMutation({
     mutationFn: async (file: File): Promise<{ url: string; mimeType: string; name: string }> => {
       setUploadError(null);
@@ -70,6 +113,32 @@ export function CommsTab({ patientId }: { patientId: string }) {
     onSuccess: (data) => setAttachment(data),
     onError: (err) => setUploadError((err as Error).message),
   });
+
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // Press "/" anywhere on the Comms tab to focus the composer — unless
+  // the focus is already in a text input (don't steal real typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "/") return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName?.toLowerCase();
+      if (tag === "input" || tag === "textarea" || t?.isContentEditable) return;
+      e.preventDefault();
+      textareaRef.current?.focus();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const [dragOver, setDragOver] = useState(false);
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    if (!phone) return;
+    const f = e.dataTransfer.files?.[0];
+    if (f) upload.mutate(f);
+  };
 
   const reply = useMutation({
     mutationFn: async () => {
@@ -107,6 +176,22 @@ export function CommsTab({ patientId }: { patientId: string }) {
   return (
     <div data-id="PATIENT-COMMS-TAB" className="space-y-4">
       {/* ───── Reply composer ───── */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); if (phone) setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={onDrop}
+        className={cn(
+          "relative rounded-xl transition-all",
+          dragOver && "ring-2 ring-emerald-400 ring-offset-2"
+        )}
+      >
+      {dragOver && (
+        <div className="absolute inset-0 z-10 rounded-xl bg-emerald-50/80 border-2 border-dashed border-emerald-400 flex items-center justify-center pointer-events-none">
+          <div className="text-emerald-700 text-sm font-semibold inline-flex items-center gap-2">
+            <Paperclip className="w-4 h-4" /> Drop to attach
+          </div>
+        </div>
+      )}
       <Card padding="md">
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -123,11 +208,12 @@ export function CommsTab({ patientId }: { patientId: string }) {
         </CardHeader>
         <CardContent className="space-y-2.5">
           <textarea
+            ref={textareaRef}
             rows={3}
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={phone
-              ? "Type your message…  (⌘⏎ to send)"
+              ? "Type your message…  (press / to focus, ⌘⏎ to send)"
               : "Add a phone number on the patient profile to enable messaging."}
             disabled={!phone}
             onKeyDown={(e) => {
@@ -161,13 +247,24 @@ export function CommsTab({ patientId }: { patientId: string }) {
               <AlertTriangle className="w-3 h-3" /> {uploadError}
             </p>
           )}
+          {draftAi.isError && (
+            <p className="text-[11px] text-red-600 inline-flex items-center gap-1">
+              <AlertTriangle className="w-3 h-3" /> {(draftAi.error as Error).message}
+            </p>
+          )}
+          {draftMeta && (
+            <p className="text-[11px] text-violet-700 bg-violet-50 border border-violet-200 rounded-md px-2.5 py-1.5 inline-flex items-center gap-1.5">
+              <Sparkles className="w-3 h-3" />
+              AI draft ({draftMeta.confidence.toLowerCase()} confidence, {draftMeta.intent.toLowerCase()}) — review and edit before sending.
+            </p>
+          )}
 
           {/* Hidden file input — triggered by paperclip button below.
               Accept list mirrors /api/upload's allowed types. */}
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            accept="image/jpeg,image/png,image/webp,image/gif,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,audio/aac,video/mp4,video/webm,video/quicktime"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) upload.mutate(f);
@@ -208,6 +305,28 @@ export function CommsTab({ patientId }: { patientId: string }) {
                   ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
                   : <Paperclip className="w-3.5 h-3.5" />}
                 Attach
+              </button>
+              <button
+                onClick={() => draftAi.mutate()}
+                disabled={!phone || draftAi.isPending}
+                title="Suggest a reply based on the conversation"
+                className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-violet-700 hover:bg-violet-50 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+              >
+                {draftAi.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Sparkles className="w-3.5 h-3.5" />}
+                Draft with AI
+              </button>
+              <button
+                onClick={() => portalLink.mutate()}
+                disabled={!phone || portalLink.isPending}
+                title="Generate a private portal link and add it to the message"
+                className="px-2.5 py-1.5 rounded-md text-[11px] font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
+              >
+                {portalLink.isPending
+                  ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  : <Link2 className="w-3.5 h-3.5" />}
+                Portal link
               </button>
             </div>
             <div className="flex items-center gap-2">
@@ -251,6 +370,7 @@ export function CommsTab({ patientId }: { patientId: string }) {
           )}
         </CardContent>
       </Card>
+      </div>
 
       {/* ───── Timeline ───── */}
       <Card padding="md">

@@ -23,6 +23,7 @@ import { existsSync, rmSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import * as QRCode from "qrcode";
 import { logger } from "@/lib/logger";
+import { opsAlert } from "@/lib/ops-alerts";
 import { handleInboundMessage } from "./whatsapp-inbound";
 
 // Baileys is a heavy native-ish dep — we import it dynamically inside
@@ -181,12 +182,25 @@ async function boot() {
         c.sock = null;
         c.bootPromise = null;
         logger.warn("WhatsApp Baileys logged out — session cleared");
+        // Logged-out is operator-actionable (need to re-pair) so this
+        // graduates from a warn to a paged alert.
+        opsAlert("error", "WhatsApp Baileys logged out", {
+          action: "Re-pair the phone from /admin/whatsapp",
+          code,
+        });
         return;
       }
       c.state = { status: "disconnected", qr: null, lastError: String(lastDisconnect?.error ?? "unknown") };
       c.sock = null;
       c.bootPromise = null;
-      // Auto-reconnect after a short delay.
+      // Auto-reconnect after a short delay. Surface a warn-level alert
+      // so the operator can see the disconnect even though the socket
+      // will likely recover on its own.
+      opsAlert("warn", "WhatsApp Baileys disconnected", {
+        code: code ?? "unknown",
+        willRetry: true,
+        retryInMs: 3000,
+      });
       setTimeout(() => { void getWhatsApp(); }, 3000);
     }
   });

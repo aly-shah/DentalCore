@@ -9,9 +9,18 @@ const ALLOWED_TYPES = new Set([
   "application/pdf",
   "application/msword",
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  // Audio (WhatsApp voice-note interop). webm = browser MediaRecorder default.
+  "audio/mpeg", "audio/mp4", "audio/ogg", "audio/webm", "audio/wav", "audio/aac",
+  // Video — same MIME envelope as WhatsApp media uploads
+  "video/mp4", "video/webm", "video/quicktime",
 ]);
 
-const ALLOWED_EXTENSIONS = new Set(["jpg", "jpeg", "png", "webp", "gif", "pdf", "doc", "docx"]);
+const ALLOWED_EXTENSIONS = new Set([
+  "jpg", "jpeg", "png", "webp", "gif",
+  "pdf", "doc", "docx",
+  "mp3", "m4a", "ogg", "oga", "opus", "webm", "wav", "aac",
+  "mp4", "mov",
+]);
 
 export async function POST(request: Request) {
   try {

@@ -3,7 +3,8 @@
 import { useState } from "react";
 import {
   TrendingUp, Users, Calendar, CreditCard, AlertTriangle,
-  CalendarClock, UserPlus, CheckCircle, Download,
+  CalendarClock, UserPlus, CheckCircle, Download, Repeat,
+  Stethoscope, Filter,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -31,11 +32,17 @@ export default function ReportsPage() {
   const { data: revenueRes, isLoading: rLoading } = useReport("revenue", days);
   const { data: appointmentsRes, isLoading: aLoading } = useReport("appointments", days);
   const { data: patientsRes, isLoading: pLoading } = useReport("patients", days);
+  const { data: retentionRes }     = useReport("retention", days);
+  const { data: productivityRes }  = useReport("doctorProductivity", days);
+  const { data: funnelRes }        = useReport("leadFilter", days);
 
   const overview = (overviewRes?.data || {}) as Record<string, number>;
   const revenue = (revenueRes?.data || {}) as { dailyRevenue?: { date: string; amount: number }[]; methodSplit?: { method: string; amount: number }[]; total?: number };
   const appointments = (appointmentsRes?.data || {}) as { byStatus?: { status: string; count: number }[]; byType?: { type: string; count: number }[]; byDoctor?: { doctor: string; count: number }[] };
   const patients = (patientsRes?.data || {}) as { genderSplit?: { gender: string; count: number }[] };
+  const retention = (retentionRes?.data || {}) as { totalCohort?: number; returned?: number; returnRate?: number; byMonth?: { month: string; cohort: number; returned: number; rate: number }[] };
+  const productivity = (productivityRes?.data || {}) as { rows?: { doctor: string; appointments: number; completed: number; completionRate: number; revenue: number; avgRevenuePerVisit: number }[] };
+  const funnel = (funnelRes?.data || {}) as { steps?: { stage: string; count: number }[]; overallConversion?: number };
 
   if (!access.canView) return <div className="flex items-center justify-center py-20 text-stone-500">No access.</div>;
   const isLoading = oLoading || rLoading || aLoading || pLoading;
@@ -104,6 +111,114 @@ export default function ReportsPage() {
                 const colors: Record<string, string> = { MALE: "bg-blue-100 text-blue-700", FEMALE: "bg-pink-100 text-pink-700", OTHER: "bg-stone-100 text-stone-700" };
                 return <div key={g.gender} className={`flex-1 rounded-xl p-3 text-center ${colors[g.gender] || "bg-stone-100"}`}><p className="text-xl font-bold">{g.count}</p><p className="text-[10px] font-medium uppercase">{g.gender}</p></div>;
               })}</div></CardContent></Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Repeat className="w-4 h-4 text-emerald-500" />
+                  <span className="text-sm font-semibold text-stone-900">Patient Retention</span>
+                  <Badge variant="success" className="text-[10px]">
+                    {retention.returnRate ?? 0}% returned
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {(retention.byMonth ?? []).length > 0 ? (
+                  <div className="space-y-1.5">
+                    {(retention.byMonth ?? []).map((m) => (
+                      <div key={m.month} className="flex items-center gap-2 text-xs">
+                        <span className="w-20 text-stone-400 shrink-0">{m.month}</span>
+                        <div className="flex-1 h-5 bg-stone-100 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-400 rounded-full" style={{ width: `${m.rate}%` }} />
+                        </div>
+                        <span className="w-24 text-right font-medium text-stone-700">
+                          {m.returned}/{m.cohort}
+                          <span className="text-stone-400 font-normal"> · {m.rate}%</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-400 py-4 text-center">No cohort data yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-blue-500" />
+                  <span className="text-sm font-semibold text-stone-900">Lead Conversion Filter</span>
+                  <Badge variant="default" className="text-[10px]">
+                    {funnel.overallConversion ?? 0}% lead→accepted
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {(funnel.steps ?? []).length > 0 ? (
+                  <div className="space-y-1.5">
+                    {(() => {
+                      const top = (funnel.steps ?? [])[0]?.count || 1;
+                      return (funnel.steps ?? []).map((s) => {
+                        const pct = Math.round((s.count / top) * 100);
+                        return (
+                          <div key={s.stage} className="flex items-center gap-2 text-xs">
+                            <span className="w-32 text-stone-600 shrink-0">{s.stage}</span>
+                            <div className="flex-1 h-5 bg-stone-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-400 rounded-full" style={{ width: `${pct}%` }} />
+                            </div>
+                            <span className="w-12 text-right font-bold text-stone-900">{s.count}</span>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-400 py-4 text-center">No leads in this window</p>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <div className="flex items-center gap-2">
+                  <Stethoscope className="w-4 h-4 text-violet-500" />
+                  <span className="text-sm font-semibold text-stone-900">Doctor Productivity</span>
+                </div>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                {(productivity.rows ?? []).length > 0 ? (
+                  <div className="overflow-x-auto -mx-4 px-4">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="text-stone-400 text-left">
+                          <th className="font-normal py-1.5">Doctor</th>
+                          <th className="font-normal py-1.5 text-right">Visits</th>
+                          <th className="font-normal py-1.5 text-right">Completed</th>
+                          <th className="font-normal py-1.5 text-right">Completion %</th>
+                          <th className="font-normal py-1.5 text-right">Revenue</th>
+                          <th className="font-normal py-1.5 text-right">Avg / visit</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(productivity.rows ?? []).map((r) => (
+                          <tr key={r.doctor} className="border-t border-stone-100">
+                            <td className="py-1.5 font-medium text-stone-700">{r.doctor}</td>
+                            <td className="py-1.5 text-right">{r.appointments}</td>
+                            <td className="py-1.5 text-right">{r.completed}</td>
+                            <td className="py-1.5 text-right text-emerald-600 font-semibold">{r.completionRate}%</td>
+                            <td className="py-1.5 text-right font-bold text-stone-900">{formatCurrency(r.revenue)}</td>
+                            <td className="py-1.5 text-right text-stone-500">{formatCurrency(r.avgRevenuePerVisit)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-stone-400 py-4 text-center">No doctor data</p>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </>
       )}

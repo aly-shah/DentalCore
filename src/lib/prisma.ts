@@ -33,12 +33,29 @@ function shouldScope(model: string | undefined, operation: string): boolean {
   return READ_OPS.has(operation) || CREATE_OPS.has(operation);
 }
 
+/**
+ * Strict mode toggles between two scoping semantics:
+ *
+ *   Permissive (default): tenantId === current OR tenantId IS NULL.
+ *     Useful while a deployment still has un-backfilled legacy rows so
+ *     they remain visible. Carries some cross-tenant leakage risk if
+ *     ANY row was created without a tenantId (singletons aside).
+ *
+ *   Strict (`TENANT_STRICT=1`): tenantId === current only.
+ *     Safe-by-default — once the deployment has confirmed all rows in
+ *     tenanted models carry a tenantId, flip this on and the extension
+ *     will refuse to surface any rogue NULL-tenant rows.
+ *
+ * Always opt INTO permissive mode explicitly when running in production
+ * by leaving `TENANT_STRICT` unset; we treat strict as Phase C target.
+ */
+const STRICT_TENANT = process.env.TENANT_STRICT === "1" || process.env.TENANT_STRICT === "true";
+
 function applyTenantFilter(args: Record<string, unknown> | undefined, tenantId: string): Record<string, unknown> {
   const next = { ...(args ?? {}) };
-  // Permissive filter: tenantId === current OR tenantId IS NULL — so rows
-  // that haven't been backfilled yet still appear. Phase C will tighten
-  // this once tenantId becomes NOT NULL.
-  const tenantClause = { OR: [{ tenantId }, { tenantId: null }] };
+  const tenantClause = STRICT_TENANT
+    ? { tenantId }
+    : { OR: [{ tenantId }, { tenantId: null }] };
   if (next.where && typeof next.where === "object") {
     next.where = { AND: [next.where, tenantClause] };
   } else {

@@ -13,7 +13,7 @@ import {
   Stethoscope, Building2, Package, Brain, Settings,
   LogOut, ChevronLeft, Menu, DoorOpen,
   FlaskConical, HeartPulse, Receipt, PhoneCall, Clock, Activity,
-  Sparkles, X, Bell, Camera, FileText, Shield, Pill,
+  Sparkles, X, Bell, Camera, FileText, Shield, Pill, Inbox,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
@@ -22,7 +22,7 @@ const iconMap: Record<string, LucideIcon> = {
   LayoutDashboard, Users, Calendar, CreditCard, Phone, UserCog,
   Stethoscope, Building2, Package, Brain, Settings,
   DoorOpen, FlaskConical, HeartPulse, Receipt, PhoneCall,
-  Clock, Activity, Sparkles, Bell, Camera, FileText, Shield, Pill,
+  Clock, Activity, Sparkles, Bell, Camera, FileText, Shield, Pill, Inbox,
   CalendarClock: Clock,
 };
 
@@ -84,6 +84,7 @@ const extraRoutes: Record<string, { label: string; href: string; icon: string; a
   "/admin/audit":     [{ label: "Audit Log", href: "/admin/audit", icon: "Shield", afterModule: "MOD-ADMIN", roles: ["ADMIN", "SUPER_ADMIN"] }],
   "/admin/tenants":   [{ label: "Tenants", href: "/admin/tenants", icon: "Building2", afterModule: "MOD-ADMIN", roles: ["SUPER_ADMIN"] }],
   "/admin/whatsapp":  [
+    { label: "Messages", href: "/admin/messages", icon: "Inbox", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR", "RECEPTIONIST"] },
     { label: "WhatsApp", href: "/admin/whatsapp", icon: "Phone", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN"] },
     { label: "WA Inbox", href: "/admin/whatsapp/inbox", icon: "Bell", afterModule: "MOD-COMMUNICATION", roles: ["ADMIN", "SUPER_ADMIN", "RECEPTIONIST"] },
   ],
