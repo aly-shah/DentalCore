@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
 import { useModuleNavigation } from "@/modules/core/hooks";
@@ -205,7 +206,7 @@ export function Sidebar() {
                           key={extra.href}
                           href={extra.href}
                           className={cn(
-                            "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
+                            "relative flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all",
                             exActive ? "bg-blue-50 text-blue-700" : "text-stone-500 hover:bg-stone-50 hover:text-stone-700",
                             !showLabels && "justify-center px-2"
                           )}
@@ -213,6 +214,9 @@ export function Sidebar() {
                         >
                           <ExIcon className={cn("w-5 h-5 shrink-0", exActive && "text-blue-600")} />
                           {showLabels && <span className="truncate">{extra.label}</span>}
+                          {extra.href === "/admin/booking-requests" && (
+                            <BookingRequestsBadge collapsed={!showLabels} active={exActive} />
+                          )}
                         </Link>
                       );
                     })}
@@ -281,6 +285,50 @@ export function Sidebar() {
         <ChevronLeft className={cn("w-3.5 h-3.5 transition-transform", collapsed && "rotate-180")} />
       </button>
     </>
+  );
+}
+
+/**
+ * Sidebar pill showing the number of PENDING online bookings. Polls
+ * every 30s + on window focus so a receptionist seeing the dashboard
+ * picks up new requests without a refresh. When collapsed (icon-only
+ * sidebar), renders as a small unread dot on the corner of the icon.
+ */
+function BookingRequestsBadge({ collapsed, active }: { collapsed: boolean; active: boolean }) {
+  const { data } = useQuery({
+    queryKey: ["booking-requests-count"],
+    queryFn: async () => {
+      const r = await fetch("/api/admin/booking-requests/count");
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "load_failed");
+      return j.data as { count: number };
+    },
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
+  });
+
+  const count = data?.count ?? 0;
+  if (count === 0) return null;
+
+  if (collapsed) {
+    return (
+      <span
+        aria-label={`${count} pending booking${count === 1 ? "" : "s"}`}
+        className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white"
+      />
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full",
+        active ? "bg-blue-600 text-white" : "bg-red-500 text-white"
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }
 
