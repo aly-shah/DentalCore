@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Calendar, Clock, Loader2, Save, CheckCircle2, AlertTriangle,
+  Calendar, Clock, Loader2, Save, CheckCircle2, AlertTriangle, Activity,
 } from "lucide-react";
 import { Card, Avatar } from "@/components/ui";
 import { useStaff } from "@/hooks/use-queries";
@@ -291,8 +291,165 @@ export default function SchedulesPage() {
           <p className="text-[11px] text-stone-400">
             Tip: a doctor needs at least one enabled day for booking slots to appear on <span className="font-mono">/book</span>.
           </p>
+
+          <DiagnosticsPanel />
         </>
       )}
+    </div>
+  );
+}
+
+interface DiagnosticsResponse {
+  date: string;
+  dayOfWeek: number;
+  treatment: { id: string; name: string; duration: number } | null;
+  treatments: { totalActive: number; withZeroDuration: number };
+  doctors: { totalActive: number; withAnySchedule: number };
+  branches: number;
+  perDoctor: {
+    doctorId: string;
+    doctorName: string;
+    reason: "ok" | "no_schedule_for_day" | "on_approved_leave" | "fully_blocked" | "no_active_branch";
+    detail?: string;
+    sampleSlots?: string[];
+  }[];
+  summary: Record<string, number>;
+}
+
+function DiagnosticsPanel() {
+  const [date, setDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [open, setOpen] = useState(false);
+
+  const diag = useQuery({
+    enabled: open,
+    queryKey: ["booking-diagnostics", date],
+    queryFn: async (): Promise<DiagnosticsResponse> => {
+      const r = await fetch(`/api/admin/booking-diagnostics?date=${date}`);
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "load_failed");
+      return j.data;
+    },
+  });
+
+  const reasonColor: Record<string, string> = {
+    ok:                  "bg-emerald-50 text-emerald-700 border-emerald-200",
+    no_schedule_for_day: "bg-amber-50 text-amber-700 border-amber-200",
+    on_approved_leave:   "bg-blue-50 text-blue-700 border-blue-200",
+    fully_blocked:       "bg-stone-50 text-stone-700 border-stone-200",
+    no_active_branch:    "bg-red-50 text-red-700 border-red-200",
+  };
+  const reasonLabel: Record<string, string> = {
+    ok:                  "Available",
+    no_schedule_for_day: "No schedule for this weekday",
+    on_approved_leave:   "On approved leave",
+    fully_blocked:       "Fully booked / blocked",
+    no_active_branch:    "No active branch",
+  };
+
+  return (
+    <Card padding="md" className="space-y-3">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4 text-blue-600" />
+          <span className="text-sm font-semibold text-stone-900">Booking diagnostics</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="px-2 py-1 rounded-md border border-stone-200 text-xs bg-white"
+          />
+          <button
+            onClick={() => setOpen(true)}
+            className="px-3 py-1.5 rounded-md bg-blue-600 text-white text-xs font-semibold"
+          >
+            Run check
+          </button>
+        </div>
+      </div>
+
+      {!open && (
+        <p className="text-xs text-stone-500">
+          Click "Run check" to see why <span className="font-mono">/book</span> shows (or hides) each doctor for the chosen date.
+        </p>
+      )}
+
+      {open && diag.isLoading && (
+        <div className="text-sm text-stone-500 inline-flex items-center gap-2">
+          <Loader2 className="w-4 h-4 animate-spin" /> running…
+        </div>
+      )}
+      {open && diag.isError && (
+        <p className="text-xs text-red-600 inline-flex items-center gap-1">
+          <AlertTriangle className="w-3 h-3" /> {(diag.error as Error).message}
+        </p>
+      )}
+
+      {open && diag.data && (
+        <div className="space-y-3 text-sm">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <Stat label="Active treatments" value={diag.data.treatments.totalActive}
+              warn={diag.data.treatments.totalActive === 0} />
+            <Stat label="Treatments w/ 0 duration" value={diag.data.treatments.withZeroDuration}
+              warn={diag.data.treatments.withZeroDuration > 0} />
+            <Stat label="Active doctors" value={diag.data.doctors.totalActive}
+              warn={diag.data.doctors.totalActive === 0} />
+            <Stat label="Doctors w/ schedules" value={diag.data.doctors.withAnySchedule}
+              warn={diag.data.doctors.withAnySchedule < diag.data.doctors.totalActive} />
+          </div>
+
+          {diag.data.perDoctor.length === 0 ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+              No active doctors found. Add one under <span className="font-mono">/admin/users</span>.
+            </p>
+          ) : (
+            <div className="space-y-1.5">
+              {diag.data.perDoctor.map((d) => (
+                <div
+                  key={d.doctorId}
+                  className={cn(
+                    "flex items-start justify-between gap-3 p-2.5 rounded-md border",
+                    reasonColor[d.reason] ?? "bg-stone-50"
+                  )}
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold">{d.doctorName}</p>
+                    {d.detail && <p className="text-[11px] opacity-80">{d.detail}</p>}
+                    {d.sampleSlots && d.sampleSlots.length > 0 && (
+                      <p className="text-[11px] opacity-80 mt-0.5">
+                        First slots: {d.sampleSlots.join(", ")}
+                      </p>
+                    )}
+                  </div>
+                  <span className="shrink-0 text-[10px] font-bold uppercase tracking-wider">
+                    {reasonLabel[d.reason] ?? d.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <p className="text-[11px] text-stone-400">
+            Checked against {diag.data.treatment
+              ? <>treatment <span className="font-mono">{diag.data.treatment.name}</span> ({diag.data.treatment.duration} min)</>
+              : <>no treatment found — create one on <span className="font-mono">/admin/treatments</span></>}
+            {" · "}weekday {diag.data.dayOfWeek}
+          </p>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function Stat({ label, value, warn = false }: { label: string; value: number; warn?: boolean }) {
+  return (
+    <div className={cn(
+      "p-2 rounded-md border text-center",
+      warn ? "bg-amber-50 border-amber-200" : "bg-stone-50 border-stone-100"
+    )}>
+      <p className={cn("text-base font-bold", warn ? "text-amber-700" : "text-stone-900")}>{value}</p>
+      <p className="text-[10px] uppercase tracking-wider text-stone-400">{label}</p>
     </div>
   );
 }
