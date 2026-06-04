@@ -6,7 +6,7 @@
         </trust-anchors>
     </base-config>
     <domain-config cleartextTrafficPermitted="false">
-        <domain includeSubdomains="true">scalamatic.com</domain>
+        <domain includeSubdomains="true">scalamedic.com</domain>
         <trust-anchors>
             <certificates src="system" />
         </trust-anchors>

@@ -10,9 +10,9 @@ const config: CapacitorConfig = {
   webDir: "public",
 
   server: {
-    url: "https://dental.scalamatic.com",
+    url: "https://dental.scalamedic.com",
     cleartext: false,
-    allowNavigation: ["dental.scalamatic.com", "*.scalamatic.com"],
+    allowNavigation: ["dental.scalamedic.com", "*.scalamedic.com"],
   },
 
   android: {

@@ -21,7 +21,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 const DEFAULT_TENANT_SLUG = "default";
-const DEFAULT_HOSTNAMES = ["dental.scalamedic.com", "dental.scalamatic.com"];
+const DEFAULT_HOSTNAMES = ["dental.scalamedic.com"];
 
 async function main() {
   console.log("==> Phase A tenant backfill starting…");
