@@ -60,3 +60,6 @@ next-env.d.ts
 /android/dentacore-release.keystore
 /android/*.keystore
 /android/*.jks
+
+# Built Android packages — artifacts, not source
+*.apk
