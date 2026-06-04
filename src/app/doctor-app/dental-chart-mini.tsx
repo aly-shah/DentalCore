@@ -20,11 +20,16 @@ import {
   STATUS_STYLES,
   STATUSES,
   UNIVERSAL_MAP,
+  SURFACE_CHIPS,
+  QUICK_CONDITIONS,
+  surfaceFill,
   effectiveStatus,
   toothCategory,
   parseChips,
   type ToothStatus,
   type ToothRecord,
+  type Surface,
+  type SurfaceData,
 } from "@/components/patients/tabs/dental-chart/types";
 import { demoChart } from "./demo-data";
 
@@ -64,6 +69,21 @@ const CATEGORY_LABEL: Record<ReturnType<typeof toothCategory>, string> = {
   premolar: "Premolar",
   molar: "Molar",
 };
+
+/** "O: caries · M: filling" — compact read-only summary of marked surfaces. */
+function summarizeSurfaces(surfaces: ToothRecord["surfaces"] | undefined): string {
+  if (!surfaces) return "";
+  return (Object.keys(surfaces) as Surface[])
+    .map((k) => {
+      const d = surfaces[k];
+      const mark = d?.condition || d?.plannedTreatment || d?.completedTreatment;
+      if (!mark) return null;
+      const short = SURFACE_CHIPS.find((c) => c.key === k)?.short ?? k[0].toUpperCase();
+      return `${short}: ${mark}`;
+    })
+    .filter(Boolean)
+    .join(" · ");
+}
 
 function displayStatus(t: ChartTooth | undefined): ToothStatus {
   if (!t) return "HEALTHY";
@@ -237,7 +257,10 @@ export function DentalChartMini({ patientId, demo = false }: { patientId: string
               {selTooth.priority && selTooth.priority !== "MEDIUM" && (
                 <DetailRow label="Priority" value={String(selTooth.priority).toLowerCase()} />
               )}
-              {!selTooth.conditions && !selTooth.plannedTreatment && !selTooth.completedTreatment && (
+              {summarizeSurfaces(selTooth.surfaces) && (
+                <DetailRow label="Surfaces" value={summarizeSurfaces(selTooth.surfaces)} />
+              )}
+              {!selTooth.conditions && !selTooth.plannedTreatment && !selTooth.completedTreatment && !summarizeSurfaces(selTooth.surfaces) && (
                 <p className="text-[11px] text-stone-500">No further notes recorded.</p>
               )}
             </div>
@@ -366,7 +389,30 @@ function ToothEditor({
   const [conditions, setConditions] = useState(tooth?.conditions ?? "");
   const [planned, setPlanned] = useState(tooth?.plannedTreatment ?? "");
   const [completed, setCompleted] = useState(tooth?.completedTreatment ?? "");
+  const [surfaces, setSurfaces] = useState<Partial<Record<Surface, SurfaceData>>>(tooth?.surfaces ?? {});
+  const [activeSurface, setActiveSurface] = useState<Surface | null>(null);
   const label = numbering === "UNIVERSAL" ? UNIVERSAL_MAP[fdi] ?? fdi : fdi;
+
+  const surfaceHasData = (s: Surface) => {
+    const d = surfaces[s];
+    return !!(d?.condition || d?.plannedTreatment || d?.completedTreatment || d?.notes);
+  };
+  const updateSurface = (s: Surface, field: keyof SurfaceData, value: string) =>
+    setSurfaces((prev) => ({ ...prev, [s]: { ...prev[s], [field]: value } }));
+  const clearSurface = (s: Surface) =>
+    setSurfaces((prev) => {
+      const next = { ...prev };
+      delete next[s];
+      return next;
+    });
+  // Full-replace, minus empty entries — mirrors the desktop save semantics.
+  const prunedSurfaces = (): Partial<Record<Surface, SurfaceData>> => {
+    const out: Partial<Record<Surface, SurfaceData>> = {};
+    (Object.keys(surfaces) as Surface[]).forEach((k) => {
+      if (surfaceHasData(k)) out[k] = surfaces[k]!;
+    });
+    return out;
+  };
 
   const save = useMutation({
     mutationFn: async () => {
@@ -391,6 +437,7 @@ function ToothEditor({
           conditions: conditions.trim(),
           plannedTreatment: planned.trim(),
           completedTreatment: completed.trim(),
+          surfaces: prunedSurfaces(),
         }),
       });
       const j = await r.json();
@@ -476,8 +523,76 @@ function ToothEditor({
           value={conditions}
           onChange={(e) => setConditions(e.target.value)}
           placeholder="e.g. Deep caries, sensitivity"
-          className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 mb-4"
+          className="w-full px-3 py-2 rounded-xl border border-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400 mb-3"
         />
+
+        {/* Per-surface marking */}
+        <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">
+          Surfaces <span className="text-stone-300 font-medium normal-case tracking-normal">· tap a surface, then a finding</span>
+        </p>
+        <div className="grid grid-cols-5 gap-1.5 mb-2">
+          {SURFACE_CHIPS.map((c) => {
+            const has = surfaceHasData(c.key);
+            const fill = has ? surfaceFill(status, surfaces[c.key]) : null;
+            const active = activeSurface === c.key;
+            return (
+              <button
+                key={c.key}
+                onClick={() => setActiveSurface(active ? null : c.key)}
+                aria-pressed={active}
+                aria-label={`${c.label} surface${has ? ", marked" : ""}`}
+                style={fill ? { backgroundColor: fill.fill, borderColor: fill.stroke } : undefined}
+                className={cn(
+                  "py-2 rounded-lg border text-[11px] font-bold transition-all",
+                  !fill && "bg-white border-stone-200 text-stone-600",
+                  active && "ring-2 ring-teal-500",
+                )}
+                title={c.label}
+              >
+                {c.short}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeSurface && (
+          <div className="rounded-xl border border-stone-200 bg-stone-50 p-2.5 mb-4">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold text-stone-700">
+                {SURFACE_CHIPS.find((c) => c.key === activeSurface)?.label} surface
+              </span>
+              {surfaceHasData(activeSurface) && (
+                <button
+                  onClick={() => clearSurface(activeSurface)}
+                  className="text-[10px] font-bold text-red-600 hover:underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
+            {surfaceHasData(activeSurface) && (
+              <p className="text-[10px] text-stone-500 mb-1.5">
+                {[
+                  surfaces[activeSurface]?.condition && `Finding: ${surfaces[activeSurface]?.condition}`,
+                  surfaces[activeSurface]?.plannedTreatment && `Planned: ${surfaces[activeSurface]?.plannedTreatment}`,
+                  surfaces[activeSurface]?.completedTreatment && `Done: ${surfaces[activeSurface]?.completedTreatment}`,
+                ].filter(Boolean).join(" · ")}
+              </p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {QUICK_CONDITIONS.map((q) => (
+                <button
+                  key={q.label}
+                  onClick={() => updateSurface(activeSurface, q.field, q.value)}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-stone-200 bg-white text-[10px] font-medium text-stone-600 hover:border-stone-300 transition-colors"
+                >
+                  <span aria-hidden>{q.emoji}</span>
+                  {q.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {save.isError && (
           <p className="text-[11px] text-red-600 mb-2">{(save.error as Error).message}</p>

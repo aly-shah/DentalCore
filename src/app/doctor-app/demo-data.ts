@@ -7,7 +7,7 @@
  * open the live URL and see the full UI without a doctor account.
  */
 import type { SummaryPayload } from "./patient-summary-view";
-import type { ToothStatus } from "@/components/patients/tabs/dental-chart/types";
+import type { ToothStatus, Surface, SurfaceData } from "@/components/patients/tabs/dental-chart/types";
 
 type Apt = Record<string, unknown>;
 
@@ -263,6 +263,7 @@ export interface DemoTooth {
   plannedTreatment?: string;
   completedTreatment?: string;
   priority?: "EMERGENCY" | "HIGH" | "MEDIUM" | "COSMETIC";
+  surfaces?: Partial<Record<Surface, SurfaceData>>;
 }
 
 export interface DemoChart {
@@ -274,9 +275,16 @@ const DEMO_CHARTS: Record<string, DemoChart> = {
   "demo-p1": {
     dentition: "ADULT",
     teeth: [
-      { fdi: 26, status: "ROOT_CANAL", conditions: "Deep caries, irreversible pulpitis", plannedTreatment: "Obturation + crown", priority: "HIGH" },
-      { fdi: 36, status: "FILLING", completedTreatment: "Composite filling" },
-      { fdi: 47, status: "CARIES", conditions: "Occlusal caries", plannedTreatment: "Filling", priority: "MEDIUM" },
+      {
+        fdi: 26, status: "ROOT_CANAL", conditions: "Deep caries, irreversible pulpitis",
+        plannedTreatment: "Obturation + crown", priority: "HIGH",
+        surfaces: {
+          occlusal: { condition: "Cavity", plannedTreatment: "Root Canal" },
+          mesial: { condition: "Cavity" },
+        },
+      },
+      { fdi: 36, status: "FILLING", completedTreatment: "Composite filling", surfaces: { occlusal: { completedTreatment: "Composite Filling" } } },
+      { fdi: 47, status: "CARIES", conditions: "Occlusal caries", plannedTreatment: "Filling", priority: "MEDIUM", surfaces: { occlusal: { condition: "Cavity" } } },
       { fdi: 16, status: "CROWN", completedTreatment: "Crown (PFM)" },
       { fdi: 24, status: "FILLING", completedTreatment: "Composite filling" },
       { fdi: 38, status: "MISSING" },
