@@ -227,7 +227,13 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
           setSelectedFdi(fdi);
         }}
         onClickSurface={(surface) => {
-          if (applyFromFdi !== null) return;
+          // In copy-mode a surface tap should paint the whole tooth, same as
+          // a tooth-body tap — otherwise taps landing on a surface zone get
+          // swallowed and copy/paste appears not to work.
+          if (applyFromFdi !== null) {
+            if (applyFromFdi !== fdi && applyFromData) applyMutation.mutate({ toFdi: fdi });
+            return;
+          }
           setInitialSurface(surface);
           setSelectedFdi(fdi);
         }}
@@ -412,7 +418,13 @@ export function DentalChartTab({ patientId, onExit }: { patientId: string; onExi
                 setSelectedFdi(fdi);
               }}
               onClickSurface={(fdi, s) => {
-                if (applyFromFdi !== null) return; // ignore surface clicks in copy-mode
+                // In copy-mode a surface tap paints the whole tooth (same as a
+                // tooth-body tap) instead of being ignored — otherwise taps on
+                // a surface zone get swallowed and paste appears broken.
+                if (applyFromFdi !== null) {
+                  if (applyFromFdi !== fdi && applyFromData) applyMutation.mutate({ toFdi: fdi });
+                  return;
+                }
                 setInitialSurface(s);
                 setSelectedFdi(fdi);
               }}
