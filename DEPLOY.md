@@ -68,11 +68,17 @@ mkdir -p /var/www/dentacore /var/www/dentacore/uploads
 chown -R deploy:deploy /var/www/dentacore
 
 # --- postgres ---
+# Generate a strong password and keep it ONLY in the server .env — never commit it.
+#   DB_PASS="$(openssl rand -base64 24 | tr -d '/+=')"
 sudo -u postgres psql <<SQL
-CREATE USER dentacore WITH PASSWORD 'Godbless@9920';
+CREATE USER dentacore WITH PASSWORD '__SET_A_STRONG_PASSWORD__';
 CREATE DATABASE dentacore OWNER dentacore;
 SQL
 ```
+
+> **Secrets never live in this repo.** The real DB password, `AUTH_SECRET`,
+> `OPENAI_API_KEY`, etc. live only in the VPS `.env`. The value above is a
+> placeholder — substitute it at setup time and store it in `.env`.
 
 ### nginx config `/etc/nginx/sites-available/dentacore`
 
