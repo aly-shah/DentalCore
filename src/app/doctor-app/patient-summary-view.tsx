@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { AIFeedbackWidget } from "@/components/ai/feedback-widget";
 import { demoSummary, demoAiBriefing } from "./demo-data";
 import { DentalChartMini } from "./dental-chart-mini";
+import { DentalChartTab } from "@/components/patients/tabs/dental-chart-tab";
 
 interface RxItem { medicineName: string; dosage: string; frequency: string; duration: string }
 interface SummaryItem {
@@ -481,7 +482,16 @@ export function PatientSummaryView({
       )}
 
       {/* ─── Dental chart ─── */}
-      <DentalChartMini patientId={patientId} demo={demo} />
+      {/* Live: the full desktop odontogram — complete add/edit (status,
+          surfaces, treatment, priority, history, AI, reset). Demo can't hit
+          the API, so it keeps the read-only mock mini-chart. */}
+      {demo ? (
+        <DentalChartMini patientId={patientId} demo />
+      ) : (
+        <section className="rounded-2xl bg-white border border-stone-200 p-3">
+          <DentalChartTab patientId={patientId} />
+        </section>
+      )}
 
       {/* ─── Finance ─── */}
       {data.finance.outstandingBalance > 0 && (
