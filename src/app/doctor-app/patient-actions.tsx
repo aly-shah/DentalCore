@@ -8,11 +8,11 @@
  * status — all from mobile, via the same APIs the desktop consultation
  * page uses. Demo mode renders the buttons disabled (no API / no PII).
  */
-import { useState, type ReactNode } from "react";
+import { useState, useRef, useEffect, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   FileText, Pill, HeartPulse, CalendarCheck, Plus, Trash2, X, Check, Loader2,
-  LogIn, CheckCircle2, UserX,
+  LogIn, CheckCircle2, UserX, Mic, Square, RotateCcw, Sparkles, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
@@ -30,20 +30,35 @@ export function PatientQuickActions({
 }) {
   const { user } = useAuth();
   const doctorId = user?.id ?? null;
-  const [sheet, setSheet] = useState<null | "note" | "rx" | "vitals">(null);
+  const [sheet, setSheet] = useState<null | "note" | "rx" | "vitals" | "voice">(null);
 
   const disabled = demo || !doctorId;
 
   return (
-    <section className="rounded-2xl bg-white border border-stone-200 p-2">
+    <section className="rounded-2xl bg-white border border-stone-200 p-2.5 space-y-2">
+      {/* Primary action — voice note (record → AI transcribe → save to profile) */}
+      <button
+        onClick={() => setSheet("voice")}
+        disabled={disabled}
+        className={cn(
+          "w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold shadow-sm transition-opacity",
+          disabled ? "bg-stone-100 text-stone-300" : "bg-gradient-to-br from-teal-500 to-cyan-600 text-white hover:opacity-95",
+        )}
+      >
+        <Mic className="w-4 h-4" /> Record voice note
+      </button>
+
       <div className="grid grid-cols-4 gap-1.5">
         <ActionButton icon={<FileText className="w-5 h-5" />} label="Note" tone="teal" disabled={disabled} onClick={() => setSheet("note")} />
         <ActionButton icon={<Pill className="w-5 h-5" />} label="Prescribe" tone="emerald" disabled={disabled} onClick={() => setSheet("rx")} />
         <ActionButton icon={<HeartPulse className="w-5 h-5" />} label="Vitals" tone="rose" disabled={disabled} onClick={() => setSheet("vitals")} />
         <ApptStatusButton patientId={patientId} appointmentId={todayAppointmentId} status={todayApptStatus} disabled={disabled} />
       </div>
-      {demo && <p className="text-[10px] text-stone-400 text-center mt-1.5">Actions are disabled in demo — sign in to use them.</p>}
+      {demo && <p className="text-[10px] text-stone-400 text-center">Actions are disabled in demo — sign in to use them.</p>}
 
+      {sheet === "voice" && doctorId && (
+        <VoiceNoteSheet patientId={patientId} doctorId={doctorId} appointmentId={todayAppointmentId} onClose={() => setSheet(null)} />
+      )}
       {sheet === "note" && doctorId && (
         <NoteSheet patientId={patientId} doctorId={doctorId} appointmentId={todayAppointmentId} onClose={() => setSheet(null)} />
       )}
@@ -325,6 +340,196 @@ function VitalsSheet({ patientId, recordedById, appointmentId, onClose }: { pati
         <Field label="SpO₂ (%)"><input inputMode="numeric" value={v.oxygenSaturation} onChange={(e) => set("oxygenSaturation", e.target.value)} className={inputCls} placeholder="98" /></Field>
         <Field label="Pain (0–10)"><input inputMode="numeric" value={v.painLevel} onChange={(e) => set("painLevel", e.target.value)} className={inputCls} placeholder="3" /></Field>
       </div>
+    </BottomSheet>
+  );
+}
+
+/* ───────── voice note (record → AI transcribe → save) ───────── */
+
+type VoicePhase = "idle" | "recording" | "recorded" | "transcribing" | "review";
+
+const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+function safeParseObj(s: unknown): Record<string, string> {
+  if (s && typeof s === "object") return s as Record<string, string>;
+  if (typeof s === "string") { try { return JSON.parse(s); } catch { return {}; } }
+  return {};
+}
+
+function VoiceNoteSheet({ patientId, doctorId, appointmentId, onClose }: { patientId: string; doctorId: string; appointmentId: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [phase, setPhase] = useState<VoicePhase>("idle");
+  const [seconds, setSeconds] = useState(0);
+  const [err, setErr] = useState<string | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  // transcription review fields
+  const [cc, setCC] = useState("");
+  const [findings, setFindings] = useState("");
+  const [dx, setDx] = useState("");
+  const [plan, setPlan] = useState("");
+  const [raw, setRaw] = useState("");
+
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const blobRef = useRef<Blob | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopTimer = () => { if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; } };
+  const cleanupStream = () => { streamRef.current?.getTracks().forEach((t) => t.stop()); streamRef.current = null; };
+  useEffect(() => () => { stopTimer(); cleanupStream(); }, []);
+
+  async function start() {
+    setErr(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        blobRef.current = new Blob(chunksRef.current, { type: chunksRef.current[0]?.type || "audio/webm" });
+        cleanupStream();
+        setPhase("recorded");
+      };
+      recRef.current = mr;
+      mr.start();
+      setSeconds(0);
+      setPhase("recording");
+      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+    } catch {
+      setErr("Microphone access was denied or isn't available on this device.");
+    }
+  }
+  function stop() { stopTimer(); recRef.current?.stop(); }
+  function reset() { blobRef.current = null; setSeconds(0); setErr(null); setPhase("idle"); }
+
+  async function transcribe() {
+    if (!blobRef.current) return;
+    setPhase("transcribing");
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("audio", blobRef.current, "voice-note.webm");
+      fd.append("patientId", patientId);
+      fd.append("doctorId", doctorId);
+      if (appointmentId) fd.append("appointmentId", appointmentId);
+      const r = await fetch("/api/ai/transcribe", { method: "POST", body: fd });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Transcription failed");
+      const sn = safeParseObj(j.data.structuredNote);
+      setRaw(j.data.rawTranscript || "");
+      setCC(sn.chiefComplaint || "");
+      setFindings(sn.findings || "");
+      setDx(sn.diagnosis || "");
+      setPlan(sn.plan || "");
+      setPhase("review");
+    } catch (e) {
+      setErr((e as Error).message);
+      setPhase("recorded");
+    }
+  }
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          doctorId,
+          appointmentId: appointmentId || undefined,
+          chiefComplaint: cc.trim() || undefined,
+          examination: findings.trim() || undefined,
+          diagnosis: dx.trim() || undefined,
+          treatmentPlan: plan.trim() || undefined,
+          internalNotes: raw.trim() || undefined,
+        }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Couldn't save note");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["doctor-summary", patientId] });
+      onClose();
+    },
+  });
+
+  const reviewEmpty = !cc.trim() && !findings.trim() && !dx.trim() && !plan.trim() && !raw.trim();
+
+  return (
+    <BottomSheet
+      title="Voice note"
+      subtitle={phase === "review" ? "Review the AI transcript, then save" : "Dictate — AI transcribes it for the record"}
+      onClose={onClose}
+      error={err ? new Error(err) : (save.error as Error | null)}
+      footer={phase === "review"
+        ? <SaveBar pending={save.isPending} disabled={reviewEmpty} onCancel={onClose} onSave={() => save.mutate()} label="Save to profile" />
+        : undefined}
+    >
+      {phase === "idle" && (
+        <div className="flex flex-col items-center py-6">
+          <button onClick={start} aria-label="Start recording" className="w-20 h-20 rounded-full bg-teal-600 text-white flex items-center justify-center shadow-lg active:scale-95 transition-transform">
+            <Mic className="w-8 h-8" />
+          </button>
+          <p className="text-xs text-stone-500 mt-3">Tap to start recording</p>
+        </div>
+      )}
+
+      {phase === "recording" && (
+        <div className="flex flex-col items-center py-6">
+          <div className="relative">
+            <span className="absolute inset-0 rounded-full bg-red-400/40 animate-ping" />
+            <button onClick={stop} aria-label="Stop recording" className="relative w-20 h-20 rounded-full bg-red-500 text-white flex items-center justify-center shadow-lg">
+              <Square className="w-7 h-7 fill-current" />
+            </button>
+          </div>
+          <p className="text-2xl font-bold text-stone-800 tabular-nums mt-4">{fmtTime(seconds)}</p>
+          <p className="text-xs text-stone-500 mt-1">Recording… tap to stop</p>
+        </div>
+      )}
+
+      {phase === "recorded" && (
+        <div className="flex flex-col items-center py-5">
+          <div className="w-16 h-16 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center"><Mic className="w-7 h-7" /></div>
+          <p className="text-sm font-semibold text-stone-700 mt-2">Recorded {fmtTime(seconds)}</p>
+          <div className="flex gap-2 mt-4 w-full">
+            <button onClick={reset} className="flex-1 py-2.5 rounded-xl border border-stone-200 text-sm font-semibold text-stone-600 hover:bg-stone-50 inline-flex items-center justify-center gap-1.5">
+              <RotateCcw className="w-4 h-4" /> Re-record
+            </button>
+            <button onClick={transcribe} className="flex-[2] py-2.5 rounded-xl bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 inline-flex items-center justify-center gap-1.5">
+              <Sparkles className="w-4 h-4" /> Transcribe with AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {phase === "transcribing" && (
+        <div className="flex flex-col items-center py-10 text-stone-500">
+          <Loader2 className="w-7 h-7 animate-spin text-teal-500" />
+          <p className="text-sm font-medium mt-3">Transcribing &amp; structuring…</p>
+          <p className="text-[11px] text-stone-400 mt-1">AI is turning your dictation into a note</p>
+        </div>
+      )}
+
+      {phase === "review" && (
+        <div className="py-1">
+          <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-wider text-violet-600">
+            <Sparkles className="w-3 h-3" /> AI-structured — edit before saving
+          </div>
+          <Field label="Chief complaint"><input value={cc} onChange={(e) => setCC(e.target.value)} className={inputCls} /></Field>
+          <Field label="Findings"><textarea value={findings} onChange={(e) => setFindings(e.target.value)} rows={2} className={inputCls} /></Field>
+          <Field label="Diagnosis"><input value={dx} onChange={(e) => setDx(e.target.value)} className={inputCls} /></Field>
+          <Field label="Plan"><textarea value={plan} onChange={(e) => setPlan(e.target.value)} rows={2} className={inputCls} /></Field>
+          <button onClick={() => setShowRaw((v) => !v)} className="flex items-center gap-1 text-[11px] font-semibold text-stone-500 mt-1">
+            <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showRaw && "rotate-180")} /> Full transcript
+          </button>
+          {showRaw && (
+            <textarea value={raw} onChange={(e) => setRaw(e.target.value)} rows={4} className={cn(inputCls, "mt-1.5 text-xs font-mono")} />
+          )}
+          <p className="text-[10px] text-stone-400 mt-2">Saved as a clinical note on the patient profile (transcript kept in internal notes).</p>
+        </div>
+      )}
     </BottomSheet>
   );
 }
