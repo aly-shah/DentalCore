@@ -19,6 +19,7 @@ import { AIFeedbackWidget } from "@/components/ai/feedback-widget";
 import { demoSummary, demoAiBriefing } from "./demo-data";
 import { DentalChartMini } from "./dental-chart-mini";
 import { DentalChartTab } from "@/components/patients/tabs/dental-chart-tab";
+import { PatientQuickActions } from "./patient-actions";
 
 interface RxItem { medicineName: string; dosage: string; frequency: string; duration: string }
 interface SummaryItem {
@@ -239,6 +240,14 @@ export function PatientSummaryView({
           </div>
         </section>
       )}
+
+      {/* ─── Quick actions ─── */}
+      <PatientQuickActions
+        patientId={patientId}
+        todayAppointmentId={data.todayAppt?.id ?? null}
+        todayApptStatus={data.todayAppt?.status ?? null}
+        demo={demo}
+      />
 
       {/* ─── AI Pre-visit Briefing ─── */}
       <section className="rounded-2xl bg-gradient-to-br from-violet-50 via-fuchsia-50 to-pink-50 border border-violet-200 p-3.5">
