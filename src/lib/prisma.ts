@@ -18,6 +18,7 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   // Phase B
   "Appointment", "Invoice", "Procedure", "ConsultationNote",
   "AuditLog", "Notification", "FollowUp", "ToothRecord",
+  "VoiceNote",
 ]);
 
 const READ_OPS = new Set<string>([

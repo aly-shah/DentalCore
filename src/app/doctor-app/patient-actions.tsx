@@ -9,13 +9,20 @@
  * page uses. Demo mode renders the buttons disabled (no API / no PII).
  */
 import { useState, useRef, useEffect, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   FileText, Pill, HeartPulse, CalendarCheck, Plus, Trash2, X, Check, Loader2,
   LogIn, CheckCircle2, UserX, Mic, Square, RotateCcw, Sparkles, ChevronDown,
+  ClipboardList, FlaskConical, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/auth-context";
+
+const pkr = (v: number) =>
+  new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(v);
+
+type Priority = "EMERGENCY" | "HIGH" | "MEDIUM" | "COSMETIC";
+const PRIORITIES: Priority[] = ["EMERGENCY", "HIGH", "MEDIUM", "COSMETIC"];
 
 export function PatientQuickActions({
   patientId,
@@ -30,7 +37,7 @@ export function PatientQuickActions({
 }) {
   const { user } = useAuth();
   const doctorId = user?.id ?? null;
-  const [sheet, setSheet] = useState<null | "note" | "rx" | "vitals" | "voice">(null);
+  const [sheet, setSheet] = useState<null | "note" | "rx" | "vitals" | "voice" | "plan" | "lab">(null);
 
   const disabled = demo || !doctorId;
 
@@ -48,10 +55,12 @@ export function PatientQuickActions({
         <Mic className="w-4 h-4" /> Record voice note
       </button>
 
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-3 gap-1.5">
         <ActionButton icon={<FileText className="w-5 h-5" />} label="Note" tone="teal" disabled={disabled} onClick={() => setSheet("note")} />
         <ActionButton icon={<Pill className="w-5 h-5" />} label="Prescribe" tone="emerald" disabled={disabled} onClick={() => setSheet("rx")} />
         <ActionButton icon={<HeartPulse className="w-5 h-5" />} label="Vitals" tone="rose" disabled={disabled} onClick={() => setSheet("vitals")} />
+        <ActionButton icon={<ClipboardList className="w-5 h-5" />} label="Plan" tone="indigo" disabled={disabled} onClick={() => setSheet("plan")} />
+        <ActionButton icon={<FlaskConical className="w-5 h-5" />} label="Lab/Imaging" tone="teal" disabled={disabled} onClick={() => setSheet("lab")} />
         <ApptStatusButton patientId={patientId} appointmentId={todayAppointmentId} status={todayApptStatus} disabled={disabled} />
       </div>
       {demo && <p className="text-[10px] text-stone-400 text-center">Actions are disabled in demo — sign in to use them.</p>}
@@ -67,6 +76,12 @@ export function PatientQuickActions({
       )}
       {sheet === "vitals" && doctorId && (
         <VitalsSheet patientId={patientId} recordedById={doctorId} appointmentId={todayAppointmentId} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "plan" && doctorId && (
+        <TreatmentPlanSheet patientId={patientId} onClose={() => setSheet(null)} />
+      )}
+      {sheet === "lab" && doctorId && (
+        <LabOrderSheet patientId={patientId} doctorId={doctorId} appointmentId={todayAppointmentId} onClose={() => setSheet(null)} />
       )}
     </section>
   );
@@ -344,6 +359,146 @@ function VitalsSheet({ patientId, recordedById, appointmentId, onClose }: { pati
   );
 }
 
+/* ───────── treatment plan ───────── */
+
+interface PlanItem { description: string; unitPrice: string; quantity: string }
+
+function TreatmentPlanSheet({ patientId, onClose }: { patientId: string; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [title, setTitle] = useState("");
+  const [diagnosis, setDx] = useState("");
+  const [priority, setPriority] = useState<Priority>("MEDIUM");
+  const [items, setItems] = useState<PlanItem[]>([{ description: "", unitPrice: "", quantity: "1" }]);
+
+  const update = (i: number, f: keyof PlanItem, v: string) => setItems((p) => p.map((r, idx) => (idx === i ? { ...r, [f]: v } : r)));
+  const addItem = () => setItems((p) => [...p, { description: "", unitPrice: "", quantity: "1" }]);
+  const removeItem = (i: number) => setItems((p) => p.filter((_, idx) => idx !== i));
+
+  const valid = items.filter((it) => it.description.trim());
+  const total = valid.reduce((s, it) => s + (Number(it.unitPrice) || 0) * (Number(it.quantity) || 1), 0);
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/treatment-plans`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim() || undefined,
+          diagnosis: diagnosis.trim() || undefined,
+          priority,
+          status: "PROPOSED",
+          items: valid.map((it) => ({
+            description: it.description.trim(),
+            unitPrice: Number(it.unitPrice) || 0,
+            quantity: Number(it.quantity) || 1,
+          })),
+        }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Couldn't create plan");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["doctor-summary", patientId] });
+      onClose();
+    },
+  });
+
+  return (
+    <BottomSheet title="Treatment plan" subtitle={total > 0 ? `Estimated total ${pkr(total)}` : undefined} onClose={onClose} error={save.error as Error | null}
+      footer={<SaveBar pending={save.isPending} disabled={valid.length === 0} onCancel={onClose} onSave={() => save.mutate()} label="Create plan" />}>
+      <Field label="Title"><input value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} placeholder="e.g. Full-mouth rehabilitation" /></Field>
+      <Field label="Diagnosis"><input value={diagnosis} onChange={(e) => setDx(e.target.value)} className={inputCls} placeholder="Optional" /></Field>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">Priority</p>
+      <div className="grid grid-cols-4 gap-1.5 mb-3">
+        {PRIORITIES.map((p) => (
+          <button key={p} onClick={() => setPriority(p)} aria-pressed={priority === p}
+            className={cn("py-1.5 rounded-lg border text-[10px] font-bold capitalize transition-all",
+              priority === p ? "bg-indigo-50 border-indigo-300 text-indigo-700" : "bg-white border-stone-200 text-stone-500")}>
+            {p.toLowerCase()}
+          </button>
+        ))}
+      </div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">Line items</p>
+      <div className="space-y-2">
+        {items.map((it, i) => (
+          <div key={i} className="rounded-xl border border-stone-200 p-2.5">
+            <div className="flex items-center gap-2 mb-2">
+              <input value={it.description} onChange={(e) => update(i, "description", e.target.value)} className={cn(inputCls, "flex-1")} placeholder={`Procedure ${i + 1}`} />
+              {items.length > 1 && <button onClick={() => removeItem(i)} aria-label="Remove" className="text-stone-300 hover:text-red-500 p-1"><Trash2 className="w-4 h-4" /></button>}
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              <label className="block">
+                <span className="text-[9px] text-stone-400 font-semibold">Unit price (Rs)</span>
+                <input inputMode="numeric" value={it.unitPrice} onChange={(e) => update(i, "unitPrice", e.target.value)} className={cn(inputCls, "text-xs")} placeholder="0" />
+              </label>
+              <label className="block">
+                <span className="text-[9px] text-stone-400 font-semibold">Qty</span>
+                <input inputMode="numeric" value={it.quantity} onChange={(e) => update(i, "quantity", e.target.value)} className={cn(inputCls, "text-xs")} placeholder="1" />
+              </label>
+            </div>
+          </div>
+        ))}
+        <button onClick={addItem} className="w-full flex items-center justify-center gap-1.5 py-2 rounded-xl border border-dashed border-stone-300 text-stone-500 text-xs font-semibold hover:border-stone-400">
+          <Plus className="w-4 h-4" /> Add procedure
+        </button>
+      </div>
+    </BottomSheet>
+  );
+}
+
+/* ───────── lab / imaging order ───────── */
+
+const LAB_PRIORITIES = ["NORMAL", "URGENT", "STAT"] as const;
+const COMMON_TESTS = ["OPG / Panoramic X-ray", "Periapical X-ray", "CBCT", "Bitewing X-ray", "Blood — CBC", "Blood — HbA1c", "Bleeding/Clotting time", "Biopsy"];
+
+function LabOrderSheet({ patientId, doctorId, appointmentId, onClose }: { patientId: string; doctorId: string; appointmentId: string | null; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [testName, setTestName] = useState("");
+  const [priority, setPriority] = useState<(typeof LAB_PRIORITIES)[number]>("NORMAL");
+  const [notes, setNotes] = useState("");
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/lab-tests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, appointmentId: appointmentId || undefined, testName: testName.trim(), priority, notes: notes.trim() || undefined }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Couldn't order test");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["doctor-summary", patientId] });
+      onClose();
+    },
+  });
+
+  return (
+    <BottomSheet title="Lab / imaging order" onClose={onClose} error={save.error as Error | null}
+      footer={<SaveBar pending={save.isPending} disabled={!testName.trim()} onCancel={onClose} onSave={() => save.mutate()} label="Order test" />}>
+      <Field label="Test / scan"><input value={testName} onChange={(e) => setTestName(e.target.value)} className={inputCls} placeholder="e.g. OPG / Panoramic X-ray" /></Field>
+      <div className="flex gap-1.5 overflow-x-auto -mx-1 px-1 pb-2 mb-1">
+        {COMMON_TESTS.map((t) => (
+          <button key={t} onClick={() => setTestName(t)} className={cn("shrink-0 px-2 py-1 rounded-full border text-[10px] font-medium transition-colors", testName === t ? "bg-teal-50 border-teal-300 text-teal-700" : "bg-white border-stone-200 text-stone-500 hover:border-stone-300")}>{t}</button>
+        ))}
+      </div>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-stone-500 mb-1.5">Priority</p>
+      <div className="grid grid-cols-3 gap-1.5 mb-3">
+        {LAB_PRIORITIES.map((p) => (
+          <button key={p} onClick={() => setPriority(p)} aria-pressed={priority === p}
+            className={cn("py-1.5 rounded-lg border text-[10px] font-bold capitalize transition-all",
+              priority === p ? (p === "STAT" ? "bg-red-50 border-red-300 text-red-700" : p === "URGENT" ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-teal-50 border-teal-300 text-teal-700") : "bg-white border-stone-200 text-stone-500")}>
+            {p.toLowerCase()}
+          </button>
+        ))}
+      </div>
+      <Field label="Notes"><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} className={inputCls} placeholder="Clinical indication (optional)" /></Field>
+    </BottomSheet>
+  );
+}
+
 /* ───────── voice note (record → AI transcribe → save) ───────── */
 
 type VoicePhase = "idle" | "recording" | "recorded" | "transcribing" | "review";
@@ -455,6 +610,30 @@ function VoiceNoteSheet({ patientId, doctorId, appointmentId, onClose }: { patie
     },
   });
 
+  // "Record now, transcribe later" — upload the audio + queue a pending note.
+  const saveForLater = useMutation({
+    mutationFn: async () => {
+      if (!blobRef.current) throw new Error("No recording");
+      const fd = new FormData();
+      fd.append("file", blobRef.current, "voice-note.webm");
+      const up = await fetch("/api/upload", { method: "POST", body: fd });
+      const uj = await up.json();
+      if (!uj.success) throw new Error(uj.error || "Upload failed");
+      const r = await fetch(`/api/patients/${patientId}/voice-notes`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId, appointmentId: appointmentId || undefined, audioUrl: uj.data.url, durationSec: seconds }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Couldn't save recording");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["voice-notes", patientId] });
+      onClose();
+    },
+  });
+
   const reviewEmpty = !cc.trim() && !findings.trim() && !dx.trim() && !plan.trim() && !raw.trim();
 
   return (
@@ -498,9 +677,17 @@ function VoiceNoteSheet({ patientId, doctorId, appointmentId, onClose }: { patie
               <RotateCcw className="w-4 h-4" /> Re-record
             </button>
             <button onClick={transcribe} className="flex-[2] py-2.5 rounded-xl bg-teal-600 text-white text-sm font-bold hover:bg-teal-700 inline-flex items-center justify-center gap-1.5">
-              <Sparkles className="w-4 h-4" /> Transcribe with AI
+              <Sparkles className="w-4 h-4" /> Transcribe now
             </button>
           </div>
+          <button
+            onClick={() => saveForLater.mutate()}
+            disabled={saveForLater.isPending}
+            className="mt-2 w-full py-2 rounded-xl text-xs font-semibold text-stone-500 hover:bg-stone-50 inline-flex items-center justify-center gap-1.5 disabled:opacity-60"
+          >
+            {saveForLater.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Clock className="w-3.5 h-3.5" />}
+            {saveForLater.isPending ? "Saving…" : "Save for later (transcribe afterwards)"}
+          </button>
         </div>
       )}
 
@@ -531,6 +718,77 @@ function VoiceNoteSheet({ patientId, doctorId, appointmentId, onClose }: { patie
         </div>
       )}
     </BottomSheet>
+  );
+}
+
+/* ───────── pending voice notes (transcribe later) ───────── */
+
+interface PendingNote { id: string; status: string; durationSec: number; createdAt: string }
+
+export function PendingVoiceNotes({ patientId, demo = false }: { patientId: string; demo?: boolean }) {
+  const { data } = useQuery({
+    queryKey: ["voice-notes", patientId],
+    enabled: !demo,
+    queryFn: async (): Promise<PendingNote[]> => {
+      const r = await fetch(`/api/patients/${patientId}/voice-notes`);
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed");
+      return j.data as PendingNote[];
+    },
+    refetchInterval: 60_000,
+  });
+  const pending = (data ?? []).filter((n) => n.status === "PENDING");
+  if (demo || pending.length === 0) return null;
+
+  return (
+    <section className="rounded-2xl bg-amber-50/50 border border-amber-200 p-3">
+      <div className="flex items-center gap-1.5 mb-2 text-[10px] font-bold uppercase tracking-wider text-amber-700">
+        <Clock className="w-3.5 h-3.5" /> Voice notes to transcribe ({pending.length})
+      </div>
+      <div className="space-y-2">
+        {pending.map((n) => <PendingRow key={n.id} note={n} patientId={patientId} />)}
+      </div>
+    </section>
+  );
+}
+
+function PendingRow({ note, patientId }: { note: PendingNote; patientId: string }) {
+  const qc = useQueryClient();
+  const transcribe = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/voice-notes/${note.id}/transcribe`, { method: "POST" });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Transcription failed");
+      return j.data;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["voice-notes", patientId] });
+      qc.invalidateQueries({ queryKey: ["doctor-summary", patientId] });
+    },
+  });
+  const discard = useMutation({
+    mutationFn: async () => { await fetch(`/api/voice-notes/${note.id}`, { method: "DELETE" }); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["voice-notes", patientId] }),
+  });
+  const busy = transcribe.isPending || discard.isPending;
+
+  return (
+    <div className="bg-white rounded-xl border border-amber-200 px-3 py-2">
+      <div className="flex items-center gap-2.5">
+        <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center shrink-0"><Mic className="w-4 h-4" /></div>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold text-stone-800">{fmtTime(note.durationSec)} recording</p>
+          <p className="text-[10px] text-stone-400">{new Date(note.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>
+        </div>
+        <button onClick={() => transcribe.mutate()} disabled={busy}
+          className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg px-2.5 py-1.5 disabled:opacity-50">
+          {transcribe.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+          Transcribe
+        </button>
+        <button onClick={() => discard.mutate()} disabled={busy} aria-label="Discard" className="text-stone-300 hover:text-red-500 p-1 disabled:opacity-50"><Trash2 className="w-4 h-4" /></button>
+      </div>
+      {transcribe.isError && <p className="text-[10px] text-red-600 mt-1">{(transcribe.error as Error).message}</p>}
+    </div>
   );
 }
 

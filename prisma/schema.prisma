@@ -987,6 +987,27 @@ model AITranscription {
   @@index([patientId, createdAt])
 }
 
+// Deferred voice notes — record now (audio stored via /api/upload), transcribe
+// with AI later, then promote into a ConsultationNote. Scalar-only (no FK
+// relations) so it stays decoupled; tenantId is auto-scoped by the Prisma
+// extension (registered in TENANT_SCOPED_MODELS).
+model VoiceNote {
+  id             String   @id @default(cuid())
+  tenantId       String?
+  patientId      String
+  doctorId       String
+  appointmentId  String?
+  audioUrl       String
+  durationSec    Int      @default(0)
+  status         String   @default("PENDING") // PENDING | SAVED
+  transcript     String?
+  structuredNote String?
+  createdAt      DateTime @default(now())
+
+  @@index([patientId, createdAt])
+  @@index([status])
+}
+
 model Notification {
   id        String   @id @default(cuid())
   tenantId  String?

@@ -34,9 +34,16 @@ interface UsageResponse {
   dailyTrend: { date: string; calls: number; costCents: number }[];
 }
 
+// AI is billed by OpenAI in real USD, so spend stays in USD as the figure of
+// record. We show a PKR estimate alongside the headline total for the PK team,
+// at a configurable rate (NEXT_PUBLIC_USD_PKR_RATE, default ~Rs 280/USD).
+const USD_PKR = Number(process.env.NEXT_PUBLIC_USD_PKR_RATE) || 280;
 const currency = (cents: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 })
     .format(cents / 100);
+const pkrEstimate = (cents: number) =>
+  new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 })
+    .format((cents / 100) * USD_PKR);
 
 const SUBSYSTEM_LABELS: Record<string, string> = {
   "treatment-suggestion": "Treatment Suggestions",
@@ -126,7 +133,7 @@ export default function AIUsagePage() {
         <>
           {/* KPI cards */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Kpi label="Total spend" value={currency(data.totals.costCents)} icon={<DollarSign className="w-4 h-4" />} accent="blue" />
+            <Kpi label="Total spend" value={currency(data.totals.costCents)} sub={`≈ ${pkrEstimate(data.totals.costCents)} @ Rs ${USD_PKR}/$`} icon={<DollarSign className="w-4 h-4" />} accent="blue" />
             <Kpi label="Total AI calls" value={data.totals.calls.toLocaleString()} icon={<Activity className="w-4 h-4" />} accent="violet" />
             <Kpi label="Avg latency" value={`${data.totals.avgLatencyMs}ms`} icon={<Clock className="w-4 h-4" />} accent="emerald" />
           </div>
@@ -240,7 +247,7 @@ const ACCENTS: Record<string, { iconBg: string; iconText: string; gradient: stri
   emerald: { iconBg: "bg-emerald-50", iconText: "text-emerald-600", gradient: "from-emerald-500 to-teal-500" },
 };
 
-function Kpi({ label, value, icon, accent }: { label: string; value: string; icon: React.ReactNode; accent: keyof typeof ACCENTS }) {
+function Kpi({ label, value, sub, icon, accent }: { label: string; value: string; sub?: string; icon: React.ReactNode; accent: keyof typeof ACCENTS }) {
   const a = ACCENTS[accent];
   return (
     <div className="bg-white rounded-2xl border-2 border-stone-200 overflow-hidden">
@@ -252,6 +259,7 @@ function Kpi({ label, value, icon, accent }: { label: string; value: string; ico
         <div>
           <p className="text-[10px] uppercase tracking-widest text-stone-500 font-bold">{label}</p>
           <p className="text-xl font-bold text-stone-900 leading-tight mt-0.5">{value}</p>
+          {sub && <p className="text-[10px] text-stone-400 font-medium leading-tight mt-0.5">{sub}</p>}
         </div>
       </div>
     </div>
