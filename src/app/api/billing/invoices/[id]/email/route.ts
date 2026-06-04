@@ -24,7 +24,7 @@ const schema = z.object({
 
 function fmtMoney(amount: number, currency: string): string {
   try {
-    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
+    return new Intl.NumberFormat("en-PK", { style: "currency", currency }).format(amount);
   } catch {
     return `${currency} ${amount.toFixed(2)}`;
   }
@@ -66,7 +66,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ success: false, error: "no_email_on_file" }, { status: 400 });
     }
 
-    const currency = process.env.PAYMENT_DEFAULT_CURRENCY ?? "USD";
+    const currency = process.env.PAYMENT_DEFAULT_CURRENCY ?? "PKR";
     let payLink: string | null = null;
     if (parsed.data.includePayLink && invoice.balanceDue > 0 && invoice.status !== "PAID") {
       try {

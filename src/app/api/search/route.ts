@@ -139,7 +139,7 @@ export async function GET(request: Request) {
         kind: "invoice" as const,
         id: i.id,
         title: i.invoiceNumber,
-        subtitle: `${i.patient.firstName} ${i.patient.lastName} · ${new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(i.total)}`,
+        subtitle: `${i.patient.firstName} ${i.patient.lastName} · ${new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(i.total)}`,
         meta: i.status,
         href: `/billing/invoices/${i.id}`,
       })),

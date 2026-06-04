@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     const checkout = await provider.createCheckout({
       invoiceId: invoice.id,
       amount,
-      currency: process.env.PAYMENT_DEFAULT_CURRENCY ?? "USD",
+      currency: process.env.PAYMENT_DEFAULT_CURRENCY ?? "PKR",
       description: `Invoice ${invoice.invoiceNumber}`,
       successUrl,
       cancelUrl,
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         provider: provider.name,
         gatewayReference: checkout.reference,
         amount,
-        currency: process.env.PAYMENT_DEFAULT_CURRENCY ?? "USD",
+        currency: process.env.PAYMENT_DEFAULT_CURRENCY ?? "PKR",
         checkoutUrl: checkout.checkoutUrl,
         returnUrl: successUrl,
         createdById: auth.user.id,

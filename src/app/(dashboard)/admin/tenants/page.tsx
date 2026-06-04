@@ -310,7 +310,7 @@ function TenantDrawer({ existing, onClose, onSaved }: {
   const [status, setStatus] = useState<TenantRow["status"]>(existing?.status ?? "TRIAL");
   const [primaryColor, setPrimaryColor] = useState(existing?.primaryColor ?? "#0284C7");
   const [timezone, setTimezone] = useState(existing?.timezone ?? "UTC");
-  const [currency, setCurrency] = useState(existing?.currency ?? "USD");
+  const [currency, setCurrency] = useState(existing?.currency ?? "PKR");
   const [region, setRegion] = useState(existing?.region ?? "global");
   const [hipaaCovered, setHipaaCovered] = useState(existing?.hipaaCovered ?? false);
   const [gdprCovered, setGdprCovered] = useState(existing?.gdprCovered ?? false);
@@ -481,7 +481,7 @@ function TenantDrawer({ existing, onClose, onSaved }: {
                 <input
                   type="text" value={currency}
                   onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-                  placeholder="USD"
+                  placeholder="PKR"
                   className={cn(inputClass, "font-mono uppercase")}
                 />
               </Field>

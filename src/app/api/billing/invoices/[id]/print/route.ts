@@ -12,7 +12,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
 
 const currency = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(v);
+  new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(v);
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {

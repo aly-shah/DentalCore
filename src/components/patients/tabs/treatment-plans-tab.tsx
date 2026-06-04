@@ -99,7 +99,7 @@ const PRIORITY_STYLES: Record<PlanPriority, { label: string; bg: string; text: s
 // ───────── helpers ─────────
 
 function currency(v: number): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
+  return new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(v);
 }
 
 function dateShort(s: string | null | undefined): string {

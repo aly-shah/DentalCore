@@ -62,7 +62,7 @@ const CATEGORY_STYLES: Record<string, { bg: string; text: string; ring: string; 
 };
 
 const currency = (v: number) =>
-  new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(v);
+  new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", maximumFractionDigits: 0 }).format(v);
 
 export default function TemplatesAdminPage() {
   const { user } = useAuth();
