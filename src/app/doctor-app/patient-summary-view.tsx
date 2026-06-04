@@ -16,6 +16,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AIFeedbackWidget } from "@/components/ai/feedback-widget";
+import { demoSummary, demoAiBriefing } from "./demo-data";
+import { DentalChartMini } from "./dental-chart-mini";
 
 interface RxItem { medicineName: string; dosage: string; frequency: string; duration: string }
 interface SummaryItem {
@@ -82,12 +84,15 @@ const daysAgo = (iso: string) => {
 export function PatientSummaryView({
   patientId,
   onBack,
+  demo = false,
 }: {
   patientId: string;
   onBack: () => void;
+  demo?: boolean;
 }) {
-  const { data, isLoading, isError } = useQuery({
+  const query = useQuery({
     queryKey: ["doctor-summary", patientId],
+    enabled: !demo,
     queryFn: async (): Promise<SummaryPayload> => {
       const r = await fetch(`/api/patients/${patientId}/doctor-summary`);
       const j = await r.json();
@@ -111,12 +116,23 @@ export function PatientSummaryView({
     },
   });
 
+  // In demo mode everything is mocked — no fetch, no AI call.
+  const data = demo ? demoSummary(patientId) : query.data;
+  const isLoading = !demo && query.isLoading;
+  const isError = !demo && query.isError;
+
+  // AI briefing display state — static in demo, live otherwise.
+  const aiItems: SummaryItem[] | undefined = demo ? demoAiBriefing(patientId) : aiSummary.data?.summary;
+  const aiPending = demo ? false : aiSummary.isPending;
+  const aiErrored = demo ? false : aiSummary.isError;
+  const aiLogId = demo ? null : aiSummary.data?.suggestionLogId ?? null;
+
   useEffect(() => {
-    if (data && !aiSummary.data && !aiSummary.isPending && !aiSummary.isError) {
+    if (!demo && data && !aiSummary.data && !aiSummary.isPending && !aiSummary.isError) {
       aiSummary.mutate();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data]);
+  }, [data, demo]);
 
   if (isLoading) {
     return (
@@ -233,35 +249,35 @@ export function PatientSummaryView({
             </span>
           </div>
           <button
-            onClick={() => aiSummary.mutate()}
-            disabled={aiSummary.isPending}
+            onClick={() => !demo && aiSummary.mutate()}
+            disabled={demo || aiPending}
             className="p-1 rounded-md text-violet-600 hover:bg-violet-100 transition-colors disabled:opacity-50"
             aria-label="Re-run AI briefing"
           >
-            {aiSummary.isPending
+            {aiPending
               ? <Loader2 className="w-3 h-3 animate-spin" />
               : <RefreshCw className="w-3 h-3" />}
           </button>
         </div>
-        {aiSummary.isPending && !aiSummary.data && (
+        {aiPending && !aiItems && (
           <div className="space-y-1.5">
             {[0, 1, 2].map((i) => (
               <div key={i} className="h-3 bg-violet-100 rounded animate-pulse" style={{ width: `${85 - i * 12}%` }} />
             ))}
           </div>
         )}
-        {aiSummary.isError && (
+        {aiErrored && (
           <p className="text-[11px] text-red-600">
             Couldn&apos;t generate briefing: {(aiSummary.error as Error).message}
           </p>
         )}
-        {aiSummary.data && aiSummary.data.summary.length === 0 && (
+        {aiItems && aiItems.length === 0 && (
           <p className="text-[11px] text-stone-500 italic">Nothing notable for today&apos;s visit.</p>
         )}
-        {aiSummary.data && aiSummary.data.summary.length > 0 && (
+        {aiItems && aiItems.length > 0 && (
           <>
             <ul className="space-y-1.5">
-              {aiSummary.data.summary.map((it, idx) => {
+              {aiItems.map((it, idx) => {
                 const s = SEVERITY_STYLES[it.severity];
                 return (
                   <li
@@ -277,9 +293,11 @@ export function PatientSummaryView({
                 );
               })}
             </ul>
-            <div className="mt-2 flex justify-end">
-              <AIFeedbackWidget suggestionLogId={aiSummary.data.suggestionLogId} compact />
-            </div>
+            {aiLogId && (
+              <div className="mt-2 flex justify-end">
+                <AIFeedbackWidget suggestionLogId={aiLogId} compact />
+              </div>
+            )}
           </>
         )}
       </section>
@@ -428,12 +446,16 @@ export function PatientSummaryView({
               <Smile className="w-3.5 h-3.5 text-amber-500" />
               <span className="text-[10px] font-bold uppercase tracking-wider text-stone-600">Problem Teeth</span>
             </div>
-            <Link
-              href={`/patients/${patientId}?tab=dental-chart`}
-              className="text-[10px] font-bold text-blue-600 hover:underline"
-            >
-              Full chart →
-            </Link>
+            {demo ? (
+              <span className="text-[10px] font-bold text-stone-300">Full chart →</span>
+            ) : (
+              <Link
+                href={`/patients/${patientId}?tab=dental-chart`}
+                className="text-[10px] font-bold text-blue-600 hover:underline"
+              >
+                Full chart →
+              </Link>
+            )}
           </div>
           <div className="flex flex-wrap gap-1.5">
             {data.problemTeeth.slice(0, 12).map((t) => (
@@ -457,6 +479,9 @@ export function PatientSummaryView({
           </div>
         </section>
       )}
+
+      {/* ─── Dental chart ─── */}
+      <DentalChartMini patientId={patientId} demo={demo} />
 
       {/* ─── Finance ─── */}
       {data.finance.outstandingBalance > 0 && (
@@ -510,31 +535,47 @@ export function PatientActionBar({
   patientId,
   todayAppointmentId,
   phone,
+  demo = false,
 }: {
   patientId: string;
   todayAppointmentId: string | null;
   phone: string | null;
+  demo?: boolean;
 }) {
   const startConsultUrl = todayAppointmentId
     ? `/consultation?patientId=${patientId}&appointmentId=${todayAppointmentId}`
     : `/consultation?patientId=${patientId}`;
 
+  const startConsultCls =
+    "flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-bold text-white bg-gradient-to-br from-teal-500 to-cyan-600 col-span-2 m-1.5 rounded-xl shadow-md";
+  const fullRecordCls =
+    "flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors";
+
   return (
     <nav className="shrink-0 border-t border-stone-200 bg-white grid grid-cols-4 pb-[env(safe-area-inset-bottom)]">
-      <Link
-        href={startConsultUrl}
-        className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[11px] font-bold text-white bg-gradient-to-br from-teal-500 to-cyan-600 col-span-2 m-1.5 rounded-xl shadow-md"
-      >
-        <Activity className="w-4 h-4" />
-        Start Consultation
-      </Link>
-      <Link
-        href={`/patients/${patientId}`}
-        className="flex flex-col items-center justify-center gap-0.5 py-2.5 text-[10px] font-medium text-stone-500 hover:text-stone-900 transition-colors"
-      >
-        <ClipboardList className="w-4 h-4" />
-        Full record
-      </Link>
+      {/* In demo mode the authed routes are inert so reviewers aren't bounced to login. */}
+      {demo ? (
+        <span className={cn(startConsultCls, "opacity-90")} title="Disabled in demo">
+          <Activity className="w-4 h-4" />
+          Start Consultation
+        </span>
+      ) : (
+        <Link href={startConsultUrl} className={startConsultCls}>
+          <Activity className="w-4 h-4" />
+          Start Consultation
+        </Link>
+      )}
+      {demo ? (
+        <span className={cn(fullRecordCls, "text-stone-300")} title="Disabled in demo">
+          <ClipboardList className="w-4 h-4" />
+          Full record
+        </span>
+      ) : (
+        <Link href={`/patients/${patientId}`} className={fullRecordCls}>
+          <ClipboardList className="w-4 h-4" />
+          Full record
+        </Link>
+      )}
       {phone ? (
         <a
           href={`tel:${phone}`}

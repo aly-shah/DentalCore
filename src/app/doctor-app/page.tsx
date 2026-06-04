@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, type ReactNode, type FormEvent } from "react";
+import { Suspense, useState, type ReactNode, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import {
   Activity,
@@ -25,6 +26,7 @@ import {
   PatientActionBar,
   usePatientSummary,
 } from "./patient-summary-view";
+import { DEMO_USER, DEMO_APPTS, DEMO_PATIENTS, demoSummary } from "./demo-data";
 
 /* ───────── helpers ───────── */
 type Apt = Record<string, unknown>;
@@ -55,10 +57,13 @@ function greeting(): string {
   const h = new Date().getHours();
   return h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
 }
-function doctorShortName(name?: string): string {
+function displayName(name?: string, role?: string): string {
   const clean = (name || "").replace(/^dr\.?\s*/i, "").trim();
   const parts = clean.split(/\s+/).filter(Boolean);
-  return `Dr. ${parts[parts.length - 1] || clean || "Doctor"}`;
+  // Only doctors get the "Dr." honorific; other clinical staff are greeted
+  // by first name so the app reads correctly for assistants and admins.
+  if (role === "DOCTOR") return `Dr. ${parts[parts.length - 1] || clean || "Doctor"}`;
+  return parts[0] || clean || "there";
 }
 function todayLabel(): string {
   return new Date()
@@ -67,20 +72,44 @@ function todayLabel(): string {
 }
 
 /* ───────── page ───────── */
+function Splash() {
+  return (
+    <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600">
+      <LoadingSpinner size="lg" />
+    </div>
+  );
+}
+
 export default function DoctorAppPage() {
+  // useSearchParams() needs a Suspense boundary in the App Router.
+  return (
+    <Suspense fallback={<Splash />}>
+      <DoctorAppRouter />
+    </Suspense>
+  );
+}
+
+function DoctorAppRouter() {
+  const demo = useSearchParams().get("demo") === "1";
   const { user, loading, login, logout } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600">
-        <LoadingSpinner size="lg" />
-      </div>
-    );
+  // Review mode — no login, mock data only, zero API/PII. See demo-data.ts.
+  if (demo) {
+    const leaveDemo = async () => {
+      window.location.href = "/doctor-app";
+    };
+    return <DoctorApp user={DEMO_USER} onLogout={leaveDemo} demo />;
   }
+
+  if (loading) return <Splash />;
   if (!user) return <DoctorLogin login={login} />;
-  if (user.role !== "DOCTOR") return <NotADoctor name={user.name} role={user.role} onLogout={logout} />;
+  if (!CLINICAL_ROLES.has(user.role)) return <NotClinicalStaff name={user.name} role={user.role} onLogout={logout} />;
   return <DoctorApp user={user} onLogout={logout} />;
 }
+
+// Roles that may use the clinical app. Doctors and assistants are the core
+// clinical users; admins are included so they can review the same view.
+const CLINICAL_ROLES = new Set(["DOCTOR", "ASSISTANT", "ADMIN", "SUPER_ADMIN"]);
 
 /* ───────── login ───────── */
 function DoctorLogin({
@@ -149,13 +178,21 @@ function DoctorLogin({
             {busy ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <p className="text-center text-[11px] text-white/60 mt-3">For clinicians only — use your doctor account</p>
+        <p className="text-center text-[11px] text-white/60 mt-3">For clinical staff — doctors &amp; assistants</p>
+        <div className="mt-4 text-center">
+          <a
+            href="/doctor-app?demo=1"
+            className="inline-block text-[11px] font-semibold text-white/80 underline underline-offset-2 hover:text-white"
+          >
+            View interactive demo (no login) →
+          </a>
+        </div>
       </div>
     </div>
   );
 }
 
-function NotADoctor({
+function NotClinicalStaff({
   name,
   role,
   onLogout,
@@ -167,9 +204,10 @@ function NotADoctor({
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-teal-500 via-cyan-600 to-blue-600 p-6 text-center text-white">
       <Stethoscope className="w-12 h-12 mb-4 opacity-90" />
-      <h1 className="text-xl font-bold">Doctor App</h1>
+      <h1 className="text-xl font-bold">Clinical App</h1>
       <p className="text-sm text-white/80 mt-2 max-w-xs">
-        This app is for doctors only.{name ? ` You're signed in as ${name}` : " You're signed in"}
+        This app is for clinical staff (doctors and assistants).
+        {name ? ` You're signed in as ${name}` : " You're signed in"}
         {role ? ` (${String(role).replace(/_/g, " ").toLowerCase()})` : ""}.
       </p>
       <div className="flex gap-2 mt-5">
@@ -191,7 +229,7 @@ function NotADoctor({
 }
 
 /* ───────── the app ───────── */
-function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () => Promise<void> }) {
+function DoctorApp({ user, onLogout, demo = false }: { user: { name: string; role?: string }; onLogout: () => Promise<void>; demo?: boolean }) {
   const [view, setView] = useState<"today" | "schedule" | "patients">("today");
   const [activePatientId, setActivePatientId] = useState<string | null>(null);
   const today = getClinicToday();
@@ -199,8 +237,9 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
   const openPatient = (pid: string) => setActivePatientId(pid);
   const closePatient = () => setActivePatientId(null);
 
-  const { data: appts = [] } = useQuery({
+  const { data: fetchedAppts = [] } = useQuery({
     queryKey: ["doctor-app", "appts", today],
+    enabled: !demo,
     queryFn: async (): Promise<Apt[]> => {
       const r = await fetch(`/api/appointments?date=${today}`);
       const j = await r.json();
@@ -209,12 +248,15 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
     },
     refetchInterval: 60_000,
   });
+  const appts = demo ? DEMO_APPTS : fetchedAppts;
 
   // Load patient summary metadata once (so the action bar knows phone +
   // today's appt) — uses the same query key as the inner view for cache hit.
-  const summaryQuery = usePatientSummary(activePatientId);
-  const patientPhone = summaryQuery.data?.patient.phone ?? null;
-  const todayAppointmentId = summaryQuery.data?.todayAppt?.id ?? null;
+  // In demo mode we read the mock summary instead of fetching.
+  const summaryQuery = usePatientSummary(demo ? null : activePatientId);
+  const demoSum = demo && activePatientId ? demoSummary(activePatientId) : null;
+  const patientPhone = (demo ? demoSum?.patient.phone : summaryQuery.data?.patient.phone) ?? null;
+  const todayAppointmentId = (demo ? demoSum?.todayAppt?.id : summaryQuery.data?.todayAppt?.id) ?? null;
 
   const isDone = (a: Apt) => DONE.includes(up(a.status));
   const isCx = (a: Apt) => CANCELLED.includes(up(a.status));
@@ -240,9 +282,16 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
               <Activity className="w-5 h-5" />
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-semibold tracking-wide text-white/70">{todayLabel()}</p>
+              <p className="text-[11px] font-semibold tracking-wide text-white/70">
+                {todayLabel()}
+                {demo && (
+                  <span className="ml-2 align-middle text-[9px] font-bold uppercase tracking-wider bg-white/20 text-white rounded-full px-1.5 py-0.5">
+                    Demo
+                  </span>
+                )}
+              </p>
               <p className="text-lg sm:text-xl font-bold leading-tight truncate">
-                {greeting()}, {doctorShortName(user.name)}
+                {greeting()}, {displayName(user.name, user.role)}
               </p>
             </div>
           </div>
@@ -265,14 +314,14 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
       {/* content */}
       <div className="flex-1 overflow-y-auto">
         {activePatientId ? (
-          <PatientSummaryView patientId={activePatientId} onBack={closePatient} />
+          <PatientSummaryView patientId={activePatientId} onBack={closePatient} demo={demo} />
         ) : (
           <>
             {view === "today" && (
               <TodayView upcoming={upcomingList} completed={completedList} onSearch={() => setView("patients")} onOpenPatient={openPatient} />
             )}
             {view === "schedule" && <ScheduleView appts={appts} onOpenPatient={openPatient} />}
-            {view === "patients" && <PatientsView onOpenPatient={openPatient} />}
+            {view === "patients" && <PatientsView onOpenPatient={openPatient} demo={demo} />}
           </>
         )}
       </div>
@@ -283,6 +332,7 @@ function DoctorApp({ user, onLogout }: { user: { name: string }; onLogout: () =>
           patientId={activePatientId}
           todayAppointmentId={todayAppointmentId}
           phone={patientPhone}
+          demo={demo}
         />
       ) : (
         <nav className="shrink-0 border-t border-stone-200 bg-white grid grid-cols-3 pb-[env(safe-area-inset-bottom)]">
@@ -458,16 +508,27 @@ function ScheduleView({ appts, onOpenPatient }: { appts: Apt[]; onOpenPatient: (
   );
 }
 
-function PatientsView({ onOpenPatient }: { onOpenPatient: (pid: string) => void }) {
+function PatientsView({ onOpenPatient, demo = false }: { onOpenPatient: (pid: string) => void; demo?: boolean }) {
   const [q, setQ] = useState("");
-  const { data } = usePatients(q ? { search: q, limit: "30" } : { limit: "30" });
-  const patients = ((data?.data ?? []) as Array<{
+  const { data } = usePatients(demo ? undefined : q ? { search: q, limit: "30" } : { limit: "30" }, { enabled: !demo });
+  const fetched = ((data?.data ?? []) as Array<{
     id: string;
     firstName: string;
     lastName: string;
     patientCode: string;
     phone: string;
   }>);
+  const patients = demo
+    ? DEMO_PATIENTS.filter((p) => {
+        const needle = q.trim().toLowerCase();
+        if (!needle) return true;
+        return (
+          `${p.firstName} ${p.lastName}`.toLowerCase().includes(needle) ||
+          p.patientCode.toLowerCase().includes(needle) ||
+          p.phone.includes(needle)
+        );
+      })
+    : fetched;
   return (
     <div className="px-3 sm:px-4 py-3 space-y-3 max-w-3xl mx-auto w-full">
       <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white border border-stone-200">

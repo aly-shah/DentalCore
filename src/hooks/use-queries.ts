@@ -79,10 +79,11 @@ export const queryKeys = {
 
 // ---- Patients ----
 
-export function usePatients(params?: Record<string, string>) {
+export function usePatients(params?: Record<string, string>, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: queryKeys.patients.list(params),
     queryFn: () => api.patients.list(params),
+    enabled: options?.enabled ?? true,
   });
 }
 

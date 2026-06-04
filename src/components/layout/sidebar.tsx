@@ -103,6 +103,8 @@ export function Sidebar() {
   const { ready } = useModuleContext();
   const navModules = useModuleNavigation();
   const role = user?.role || "ADMIN";
+  // Clinical staff get a shortcut to the mobile-first doctor/clinical app.
+  const isClinical = ["DOCTOR", "ASSISTANT", "ADMIN", "SUPER_ADMIN"].includes(role);
 
   // Auto-collapse on resize. Below 768px we use the drawer (mobileOpen),
   // so `collapsed` is irrelevant there — leaving it alone means the drawer
@@ -229,6 +231,18 @@ export function Sidebar() {
 
       {/* Bottom */}
       <div className="border-t border-stone-100 px-2 py-2 space-y-0.5 shrink-0">
+        {isClinical && (
+          <Link
+            href="/doctor-app"
+            title={!showLabels ? "Doctor App" : undefined}
+            className={cn(
+              "flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-teal-600 hover:bg-teal-50 hover:text-teal-700 transition-all",
+              !showLabels && "justify-center px-2"
+            )}
+          >
+            <Stethoscope className="w-5 h-5 shrink-0" />{showLabels && <span>Doctor App</span>}
+          </Link>
+        )}
         <Link href="/settings" className={cn("flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-stone-500 hover:bg-stone-50 hover:text-stone-700 transition-all", !showLabels && "justify-center px-2")}>
           <Settings className="w-5 h-5 shrink-0" />{showLabels && <span>Settings</span>}
         </Link>
