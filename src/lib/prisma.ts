@@ -8,10 +8,15 @@ declare global {
 
 /**
  * Models that carry a tenantId column. The Prisma extension applies a
- * WHERE filter on reads and injects tenantId on creates for any model in
- * this set. Keep in sync with the schema.
+ * WHERE filter on reads/updates/deletes and injects tenantId on creates
+ * for any model in this set. Keep in sync with the schema — the test in
+ * prisma.test.ts asserts every tenantId-bearing model is listed here.
+ *
+ * Deliberately EXCLUDED: `TenantHostname`. It maps hostnames -> tenants and
+ * is a platform-level concern (global uniqueness checks, admin-only CRUD via
+ * bypassTenantScope), so auto-scoping it would break tenant resolution.
  */
-const TENANT_SCOPED_MODELS = new Set<string>([
+export const TENANT_SCOPED_MODELS = new Set<string>([
   // Phase A
   "Branch", "User", "Patient", "Treatment", "Package", "Lead", "Room",
   "Product", "Setting",
@@ -19,19 +24,45 @@ const TENANT_SCOPED_MODELS = new Set<string>([
   "Appointment", "Invoice", "Procedure", "ConsultationNote",
   "AuditLog", "Notification", "FollowUp", "ToothRecord",
   "VoiceNote",
+  // Phase B (previously missing — were carrying tenantId with NO enforcement)
+  "DentalChart", "TreatmentPlan", "TreatmentTemplate", "BlockedSlot",
+  "BookingRequest", "PaymentSession", "AISuggestionLog",
+  "UnmatchedInboundMessage",
 ]);
 
-const READ_OPS = new Set<string>([
-  "findFirst", "findFirstOrThrow", "findMany", "findUnique", "findUniqueOrThrow",
-  "count", "aggregate", "groupBy",
+/**
+ * Operations are split by the shape of their `where` argument:
+ *
+ *  - READ_FILTER_OPS / WRITE_FILTER_OPS take a regular WhereInput, so the
+ *    tenant clause is added by AND-wrapping the whole where.
+ *  - UNIQUE_WHERE_OPS take a WhereUniqueInput, which REQUIRES at least one
+ *    unique field at the top level. We must NOT AND-wrap those (Prisma
+ *    rejects `{ AND: [...] }` with no top-level unique field); instead we
+ *    merge the tenant clause as an extra top-level `AND` alongside the
+ *    unique selector. A cross-tenant target then surfaces as P2025
+ *    (record not found) on update/delete and null on findUnique.
+ *  - CREATE_OPS inject tenantId into the data payload.
+ *  - upsert is both: scope the where (unique) AND inject tenantId on create.
+ */
+const READ_FILTER_OPS = new Set<string>([
+  "findFirst", "findFirstOrThrow", "findMany", "count", "aggregate", "groupBy",
 ]);
-
+const UNIQUE_WHERE_OPS = new Set<string>([
+  "findUnique", "findUniqueOrThrow", "update", "delete",
+]);
+const WRITE_FILTER_OPS = new Set<string>(["updateMany", "deleteMany"]);
 const CREATE_OPS = new Set<string>(["create", "createMany"]);
 
-function shouldScope(model: string | undefined, operation: string): boolean {
+/** True if this (model, operation) pair should be tenant-scoped at all. */
+export function isTenantScopedOperation(model: string | undefined, operation: string): boolean {
   if (!model || !TENANT_SCOPED_MODELS.has(model)) return false;
-  if (isTenantScopeBypassed()) return false;
-  return READ_OPS.has(operation) || CREATE_OPS.has(operation);
+  return (
+    READ_FILTER_OPS.has(operation) ||
+    UNIQUE_WHERE_OPS.has(operation) ||
+    WRITE_FILTER_OPS.has(operation) ||
+    CREATE_OPS.has(operation) ||
+    operation === "upsert"
+  );
 }
 
 /**
@@ -52,21 +83,41 @@ function shouldScope(model: string | undefined, operation: string): boolean {
  */
 const STRICT_TENANT = process.env.TENANT_STRICT === "1" || process.env.TENANT_STRICT === "true";
 
-function applyTenantFilter(args: Record<string, unknown> | undefined, tenantId: string): Record<string, unknown> {
+type AnyArgs = Record<string, unknown> | undefined;
+
+function tenantClause(tenantId: string, strict: boolean): Record<string, unknown> {
+  return strict ? { tenantId } : { OR: [{ tenantId }, { tenantId: null }] };
+}
+
+/** Collection ops: AND-wrap the whole where with the tenant clause. */
+function andWrapWhere(args: AnyArgs, clause: Record<string, unknown>): Record<string, unknown> {
   const next = { ...(args ?? {}) };
-  const tenantClause = STRICT_TENANT
-    ? { tenantId }
-    : { OR: [{ tenantId }, { tenantId: null }] };
   if (next.where && typeof next.where === "object") {
-    next.where = { AND: [next.where, tenantClause] };
+    next.where = { AND: [next.where, clause] };
   } else {
-    next.where = tenantClause;
+    next.where = clause;
   }
   return next;
 }
 
-function injectTenantOnCreate(
-  args: Record<string, unknown> | undefined,
+/**
+ * Unique-where ops: keep the caller's unique selector at the top level and
+ * append the tenant clause via `AND`, preserving any existing AND entries.
+ * If there is no where (Prisma will reject that itself), leave it untouched.
+ */
+function mergeUniqueWhere(args: AnyArgs, clause: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...(args ?? {}) };
+  if (!next.where || typeof next.where !== "object") return next;
+  const where = { ...(next.where as Record<string, unknown>) };
+  const existing = where.AND;
+  const existingAnd = Array.isArray(existing) ? existing : existing != null ? [existing] : [];
+  where.AND = [...existingAnd, clause];
+  next.where = where;
+  return next;
+}
+
+function injectTenantOnData(
+  args: AnyArgs,
   operation: string,
   tenantId: string,
 ): Record<string, unknown> {
@@ -77,7 +128,7 @@ function injectTenantOnCreate(
       next.data = data.map((row) =>
         typeof row === "object" && row !== null && !("tenantId" in row)
           ? { ...row, tenantId }
-          : row
+          : row,
       );
     }
   } else {
@@ -89,24 +140,58 @@ function injectTenantOnCreate(
   return next;
 }
 
+/**
+ * Pure transformation: given an operation + its args + the active tenant,
+ * return args with the tenant scope applied. No I/O — unit-tested directly
+ * in prisma.test.ts. The extension below is a thin wrapper around this.
+ */
+export function scopeQueryArgs(opts: {
+  operation: string;
+  args: AnyArgs;
+  tenantId: string;
+  strict?: boolean;
+}): AnyArgs {
+  const { operation, args, tenantId } = opts;
+  const strict = opts.strict ?? STRICT_TENANT;
+  const clause = tenantClause(tenantId, strict);
+
+  if (READ_FILTER_OPS.has(operation) || WRITE_FILTER_OPS.has(operation)) {
+    return andWrapWhere(args, clause);
+  }
+  if (UNIQUE_WHERE_OPS.has(operation)) {
+    return mergeUniqueWhere(args, clause);
+  }
+  if (CREATE_OPS.has(operation)) {
+    return injectTenantOnData(args, operation, tenantId);
+  }
+  if (operation === "upsert") {
+    // Scope the unique where AND tag the create payload.
+    const scoped = mergeUniqueWhere(args, clause);
+    const create = scoped.create;
+    if (create && typeof create === "object" && !("tenantId" in (create as object))) {
+      scoped.create = { ...(create as object), tenantId };
+    }
+    return scoped;
+  }
+  return args;
+}
+
 function buildExtendedClient(client: PrismaClient): PrismaClient {
   return client.$extends({
     name: "tenantScope",
     query: {
       $allModels: {
         async $allOperations({ model, operation, args, query }) {
-          if (!shouldScope(model, operation)) {
-            return query(args);
-          }
+          if (isTenantScopeBypassed()) return query(args);
+          if (!isTenantScopedOperation(model, operation)) return query(args);
           const tenantId = getCurrentTenantId();
           if (!tenantId) return query(args);
 
-          let nextArgs = args as Record<string, unknown> | undefined;
-          if (READ_OPS.has(operation)) {
-            nextArgs = applyTenantFilter(nextArgs, tenantId);
-          } else if (CREATE_OPS.has(operation)) {
-            nextArgs = injectTenantOnCreate(nextArgs, operation, tenantId);
-          }
+          const nextArgs = scopeQueryArgs({
+            operation,
+            args: args as AnyArgs,
+            tenantId,
+          });
           // Cast back to the operation's discriminated union — we've
           // augmented a Record so TS can't see it's still valid.
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
