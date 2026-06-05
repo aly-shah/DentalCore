@@ -21,6 +21,7 @@ import { CreateInvoiceModal } from "@/components/billing/create-invoice-modal";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
+import { VoiceNoteUpdates } from "@/components/dashboard/voice-note-updates";
 
 // Extract patient/doctor name from appointment (handles nested API format)
 function getAptPatientName(apt: Record<string, unknown>): string {
@@ -110,6 +111,9 @@ export function AdminDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Today's Schedule */}
         <div className="lg:col-span-2 space-y-4">
+          {/* Voice Note Updates — clinic-wide AI-flagged follow-ups / actions */}
+          <VoiceNoteUpdates />
+
           <div className="flex items-center justify-between">
             <h2 className="text-base sm:text-lg font-semibold text-stone-900">Today&apos;s Schedule</h2>
             <Link href="/appointments" className="text-sm text-blue-600 font-medium hover:text-blue-700 transition-colors">
