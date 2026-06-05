@@ -1002,10 +1002,17 @@ model VoiceNote {
   status         String   @default("PENDING") // PENDING | SAVED
   transcript     String?
   structuredNote String?
+  // AI-extracted action items surfaced on the dashboard after transcription.
+  followUpRequired Boolean  @default(false)
+  followUpDate     DateTime?
+  followUpReason   String?
+  actionItems      String?  // JSON: [{ item, priority }]
+  actioned         Boolean  @default(false) // doctor has scheduled/dismissed it
   createdAt      DateTime @default(now())
 
   @@index([patientId, createdAt])
   @@index([status])
+  @@index([doctorId, status, actioned])
 }
 
 model Notification {

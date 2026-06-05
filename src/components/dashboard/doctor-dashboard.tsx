@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SearchInput } from "@/components/ui/search-input";
 import { useAuth } from "@/lib/auth-context";
+import { VoiceNoteUpdates } from "@/components/dashboard/voice-note-updates";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
@@ -167,6 +168,9 @@ export function DoctorDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-5">
         {/* LEFT — Main Workspace */}
         <div className="lg:col-span-8 space-y-4">
+
+          {/* Voice Note Updates — AI-flagged follow-ups / actions from transcripts */}
+          <VoiceNoteUpdates doctorId={user?.id} />
 
           {/* Patient Search */}
           <Card>

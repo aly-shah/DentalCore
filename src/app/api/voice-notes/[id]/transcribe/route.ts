@@ -54,9 +54,15 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     }
     const transcript: string = (await wRes.json()).text || "";
 
-    // 2) Structure with GPT
-    let structured: Record<string, string> = {};
+    // 2) Structure with GPT — clinical note + follow-up + action items.
+    interface Structured {
+      chiefComplaint?: string; findings?: string; diagnosis?: string; plan?: string; summary?: string;
+      followUpRequired?: boolean; followUpDate?: string | null; followUpReason?: string;
+      actionItems?: { item: string; priority?: string }[];
+    }
+    let structured: Structured = {};
     if (transcript.trim().length > 15) {
+      const today = new Date().toISOString().slice(0, 10);
       try {
         const sRes = await fetch("https://api.openai.com/v1/chat/completions", {
           method: "POST",
@@ -64,16 +70,23 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
           body: JSON.stringify({
             model: "gpt-4o-mini",
             messages: [
-              { role: "system", content: "You are a medical note structurer for a dental clinic. Convert the raw transcript into structured clinical notes. Output JSON: {\"chiefComplaint\": \"...\", \"findings\": \"...\", \"diagnosis\": \"...\", \"plan\": \"...\", \"summary\": \"...\"}" },
+              { role: "system", content: `You are a medical note structurer for a dental clinic. Today is ${today}. Convert the raw transcript into structured clinical notes AND extract any required actions. Output JSON with keys: chiefComplaint, findings, diagnosis, plan, summary (all strings); followUpRequired (boolean — true if the dentist mentions seeing the patient again / a recall / a review); followUpDate (ISO date YYYY-MM-DD computed from today if a timeframe like "in two weeks" is mentioned, else null); followUpReason (short string, e.g. "Review root canal #26"); actionItems (array of {item: string, priority: "HIGH"|"MEDIUM"|"LOW"} for any other tasks like lab orders, referrals, or callbacks — empty array if none).` },
               { role: "user", content: transcript },
             ],
             response_format: { type: "json_object" },
-            max_tokens: 500, temperature: 0.3,
+            max_tokens: 700, temperature: 0.3,
           }),
         });
         if (sRes.ok) structured = JSON.parse((await sRes.json()).choices[0].message.content);
       } catch { /* fall back to raw transcript only */ }
     }
+
+    // Normalise the action-item fields for storage.
+    const followUpDate = structured.followUpDate && /^\d{4}-\d{2}-\d{2}/.test(structured.followUpDate)
+      ? new Date(structured.followUpDate)
+      : null;
+    const followUpRequired = !!structured.followUpRequired || !!followUpDate;
+    const actionItems = Array.isArray(structured.actionItems) ? structured.actionItems.filter((a) => a && a.item) : [];
 
     // 3) File it as a ConsultationNote. appointmentId is required + unique
     //    (one note per appointment): if the voice note is tied to an
@@ -103,10 +116,20 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    // 4) Mark the voice note saved + keep the transcript on it
+    // 4) Mark the voice note saved + store transcript and extracted actions
     await prisma.voiceNote.update({
       where: { id },
-      data: { status: "SAVED", transcript, structuredNote: JSON.stringify(structured) },
+      data: {
+        status: "SAVED",
+        transcript,
+        structuredNote: JSON.stringify(structured),
+        followUpRequired,
+        followUpDate,
+        followUpReason: structured.followUpReason || null,
+        actionItems: actionItems.length ? JSON.stringify(actionItems) : null,
+        // Surfaces on the dashboard until the doctor schedules/dismisses it.
+        actioned: !followUpRequired && actionItems.length === 0,
+      },
     });
 
     return NextResponse.json({ success: true, data: { noteId, filedAsNote: !!noteId, transcript, structured } });
