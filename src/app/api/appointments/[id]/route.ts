@@ -25,7 +25,7 @@ export async function GET(
         doctor: { select: { id: true, name: true, speciality: true, avatar: true } },
         branch: { select: { id: true, name: true, code: true } },
         room: { select: { id: true, name: true, number: true } },
-        consultationNote: true,
+        consultationNotes: true,
         procedures: true,
         prescriptions: { include: { items: true } },
         labTests: true,

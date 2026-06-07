@@ -88,13 +88,13 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
     const followUpRequired = !!structured.followUpRequired || !!followUpDate;
     const actionItems = Array.isArray(structured.actionItems) ? structured.actionItems.filter((a) => a && a.item) : [];
 
-    // 3) File it as a ConsultationNote. appointmentId is required + unique
-    //    (one note per appointment): if the voice note is tied to an
-    //    appointment, create that note or append to the existing one; with no
-    //    appointment we keep the transcript on the voice note only.
+    // 3) File it as a ConsultationNote. An appointment can have multiple
+    //    notes; to avoid spawning a fresh note on every re-transcription we
+    //    append to the most recent note for the appointment, else create one.
+    //    With no appointment we keep the transcript on the voice note only.
     let noteId: string | null = null;
     if (vn.appointmentId) {
-      const existing = await prisma.consultationNote.findUnique({ where: { appointmentId: vn.appointmentId } });
+      const existing = await prisma.consultationNote.findFirst({ where: { appointmentId: vn.appointmentId }, orderBy: { createdAt: "desc" } });
       if (existing) {
         const merged = [existing.internalNotes, transcript].filter(Boolean).join("\n\n");
         await prisma.consultationNote.update({ where: { id: existing.id }, data: { internalNotes: merged } });
