@@ -111,17 +111,17 @@ export function NotesTab({ patientId }: { patientId: string }) {
                       )}
                     </div>
                   )}
-                  {!note.isSigned && (
-                    <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        iconLeft={<Trash2 className="w-3.5 h-3.5" />}
-                        onClick={() => handleDelete(note.id)}
-                        loading={deleteNote.isPending}
-                      >
-                        Delete
-                      </Button>
+                  <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      iconLeft={<Trash2 className="w-3.5 h-3.5" />}
+                      onClick={() => handleDelete(note.id)}
+                      loading={deleteNote.isPending}
+                    >
+                      Delete
+                    </Button>
+                    {!note.isSigned && (
                       <Button
                         variant="success"
                         size="sm"
@@ -131,8 +131,8 @@ export function NotesTab({ patientId }: { patientId: string }) {
                       >
                         Sign &amp; Lock
                       </Button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               </CardContent>
             )}
