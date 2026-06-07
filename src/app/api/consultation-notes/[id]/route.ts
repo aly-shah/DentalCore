@@ -2,8 +2,7 @@
  * @system DentaCore ERP — Consultation Note item API
  * @route DELETE /api/consultation-notes/:id — delete a consultation note
  *
- * Signed notes are locked (see the sign route) and cannot be deleted — they
- * are part of the medico-legal record. Draft (unsigned) notes can be removed.
+ * Both draft and signed notes can be deleted by an authenticated user.
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -17,12 +16,9 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
 
     const { id } = await params;
 
-    const note = await prisma.consultationNote.findUnique({ where: { id }, select: { id: true, isSigned: true } });
+    const note = await prisma.consultationNote.findUnique({ where: { id }, select: { id: true } });
     if (!note) {
       return NextResponse.json({ success: false, error: "Note not found" }, { status: 404 });
-    }
-    if (note.isSigned) {
-      return NextResponse.json({ success: false, error: "Signed notes are locked and cannot be deleted" }, { status: 400 });
     }
 
     await prisma.consultationNote.delete({ where: { id } });
