@@ -7,6 +7,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { VoiceNoteUpdates } from "@/components/dashboard/voice-note-updates";
 import { useDashboardStats, useAppointments } from "@/hooks/use-queries";
 import Link from "next/link";
 import { useModuleStore } from "@/modules/core/store";
@@ -78,6 +79,9 @@ export function ReceptionistDashboard() {
         <StatCard label="Waiting" value={statsLoading ? 0 : waiting} icon={<Clock className="w-6 h-6" />} color="warning" />
         <StatCard label="Completed" value={statsLoading ? 0 : completed} icon={<CheckCircle className="w-6 h-6" />} color="info" />
       </div>
+
+      {/* Voice Note Updates — clinic-wide follow-ups/actions the doctor flagged */}
+      <VoiceNoteUpdates />
 
       {/* Check-In Queue */}
       <div className="space-y-4">
