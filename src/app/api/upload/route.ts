@@ -38,7 +38,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ success: false, error: "File too large (max 10MB)" }, { status: 400 });
     }
 
-    if (!ALLOWED_TYPES.has(file.type)) {
+    // Strip codec/charset parameters before matching: MediaRecorder tags
+    // recordings as e.g. "audio/webm;codecs=opus", which would otherwise miss
+    // the exact-match allowlist and reject legitimate voice notes.
+    const baseType = file.type.split(";")[0].trim().toLowerCase();
+    if (!ALLOWED_TYPES.has(baseType)) {
       return NextResponse.json({ success: false, error: "File type not allowed" }, { status: 400 });
     }
 

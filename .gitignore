@@ -24,6 +24,10 @@
 .DS_Store
 *.pem
 
+# user-uploaded media (voice notes, patient documents) — runtime data, not source.
+# On the VPS this is a persistent mount; locally it's created on first upload.
+/public/uploads/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
