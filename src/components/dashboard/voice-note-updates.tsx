@@ -8,10 +8,12 @@
  * transcribed notes (kind "action"). Actions can be scheduled or dismissed
  * in one tap; pending notes are informational. Hidden when empty.
  */
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Mic, CalendarPlus, X, Loader2, ChevronRight, Clock } from "lucide-react";
+import { Mic, CalendarPlus, X, Loader2, ChevronRight, Clock, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { useAuth } from "@/lib/auth-context";
 import { cn, formatDate } from "@/lib/utils";
 
 interface ActionItem { item: string; priority?: string }
@@ -23,6 +25,8 @@ interface VNItem {
   createdAt: string;
   // pending only
   durationSec?: number;
+  audioUrl?: string;
+  doctorId?: string;
   // action only
   followUpRequired?: boolean;
   followUpDate?: string | null;
@@ -75,13 +79,52 @@ export function VoiceNoteUpdates({ doctorId }: { doctorId?: string }) {
 
 function PendingRow({ it }: { it: VNItem }) {
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const canTranscribe = ["SUPER_ADMIN", "ADMIN", "DOCTOR", "ASSISTANT"].includes(user?.role ?? "");
+  const refresh = () => {
+    qc.invalidateQueries({ queryKey: ["voice-note-actions"] });
+    qc.invalidateQueries({ queryKey: ["follow-ups"] });
+  };
+
+  const [showForm, setShowForm] = useState(false);
+  const [dueDate, setDueDate] = useState("");
+  const [reason, setReason] = useState("");
+
   const dismiss = useMutation({
     mutationFn: async () => { await fetch(`/api/voice-notes/${it.id}`, { method: "PATCH" }); },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["voice-note-actions"] }),
+    onSuccess: refresh,
   });
+
+  const transcribe = useMutation({
+    mutationFn: async () => {
+      const r = await fetch(`/api/voice-notes/${it.id}/transcribe`, { method: "POST" });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Transcription failed");
+      return j.data;
+    },
+    onSuccess: refresh,
+  });
+
+  const createFollowUp = useMutation({
+    mutationFn: async () => {
+      if (!dueDate) throw new Error("Pick a date");
+      const r = await fetch(`/api/patients/${it.patientId}/follow-ups`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doctorId: it.doctorId, dueDate, reason: reason.trim() || "Follow-up (from voice note)" }),
+      });
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Couldn't create follow-up");
+      await fetch(`/api/voice-notes/${it.id}`, { method: "PATCH" }); // clear off the dashboard
+      return j.data;
+    },
+    onSuccess: refresh,
+  });
+
   const name = it.patient ? `${it.patient.firstName} ${it.patient.lastName}` : "Patient";
   const dur = it.durationSec ?? 0;
   const mmss = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}`;
+  const busy = transcribe.isPending || createFollowUp.isPending || dismiss.isPending;
 
   return (
     <div className="p-3">
@@ -90,10 +133,11 @@ function PendingRow({ it }: { it: VNItem }) {
           {name}
           {it.patient?.patientCode && <span className="ml-1.5 text-[10px] text-stone-400 font-mono">{it.patient.patientCode}</span>}
         </Link>
-        <button onClick={() => dismiss.mutate()} disabled={dismiss.isPending} aria-label="Dismiss" className="text-stone-300 hover:text-stone-600 p-0.5 disabled:opacity-40 shrink-0">
+        <button onClick={() => dismiss.mutate()} disabled={busy} aria-label="Dismiss" className="text-stone-300 hover:text-stone-600 p-0.5 disabled:opacity-40 shrink-0">
           <X className="w-4 h-4" />
         </button>
       </div>
+
       <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
         <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
         <span>
@@ -101,6 +145,48 @@ function PendingRow({ it }: { it: VNItem }) {
           {dur > 0 ? ` · ${mmss}` : ""} · recorded {formatDate(it.createdAt)}
         </span>
       </div>
+
+      {it.audioUrl && <audio controls preload="none" src={it.audioUrl} className="mt-2 w-full h-9" />}
+
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        {canTranscribe && (
+          <button
+            onClick={() => transcribe.mutate()}
+            disabled={busy}
+            className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+          >
+            {transcribe.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5" />}
+            Transcribe
+          </button>
+        )}
+        <button
+          onClick={() => setShowForm((s) => !s)}
+          disabled={busy}
+          className="inline-flex items-center gap-1.5 text-[11px] font-bold text-violet-700 border border-violet-200 bg-white hover:bg-violet-50 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+        >
+          <CalendarPlus className="w-3.5 h-3.5" />
+          Create follow-up
+        </button>
+        {transcribe.isError && <span className="text-[10px] text-red-600">{(transcribe.error as Error).message}</span>}
+      </div>
+
+      {showForm && (
+        <div className="mt-2 flex flex-col gap-1.5 bg-white border border-stone-200 rounded-lg p-2">
+          <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="text-xs border border-stone-200 rounded px-2 py-1" />
+          <input type="text" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason (optional)" className="text-xs border border-stone-200 rounded px-2 py-1" />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => createFollowUp.mutate()}
+              disabled={busy || !dueDate}
+              className="inline-flex items-center gap-1.5 text-[11px] font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg px-2.5 py-1.5 disabled:opacity-50"
+            >
+              {createFollowUp.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CalendarPlus className="w-3.5 h-3.5" />}
+              Schedule
+            </button>
+            {createFollowUp.isError && <span className="text-[10px] text-red-600">{(createFollowUp.error as Error).message}</span>}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
