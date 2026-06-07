@@ -1607,14 +1607,3 @@ ALTER TABLE "AISuggestionLog" ADD CONSTRAINT "AISuggestionLog_modelVersionId_fke
 
 -- AddForeignKey
 ALTER TABLE "AISuggestionFeedback" ADD CONSTRAINT "AISuggestionFeedback_suggestionLogId_fkey" FOREIGN KEY ("suggestionLogId") REFERENCES "AISuggestionLog"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
-┌─────────────────────────────────────────────────────────┐
-│  Update available 5.22.0 -> 7.8.0                       │
-│                                                         │
-│  This is a major update - please follow the guide at    │
-│  https://pris.ly/d/major-version-upgrade                │
-│                                                         │
-│  Run the following to update                            │
-│    npm i --save-dev prisma@latest                       │
-│    npm i @prisma/client@latest                          │
-└─────────────────────────────────────────────────────────┘
