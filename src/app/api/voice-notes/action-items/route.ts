@@ -1,10 +1,13 @@
 /**
- * @system DentaCore ERP — Voice-note action items (dashboard)
+ * @system DentaCore ERP — Voice-note dashboard feed
  * @route GET /api/voice-notes/action-items?doctorId=<id>
  *
- * Returns transcribed voice notes that still need attention — a follow-up
- * appointment (with the AI-extracted date) or other action items — and that
- * the doctor hasn't yet scheduled/dismissed. Surfaced on the dashboard.
+ * Two kinds of items the dashboard surfaces, both filtered to notes the
+ * user hasn't dismissed (actioned=false):
+ *   - kind "pending": recordings still awaiting transcription (status
+ *     PENDING) — so the front desk/doctor knows a note is waiting.
+ *   - kind "action": transcribed notes (status SAVED) with an AI-extracted
+ *     follow-up or other action item still to schedule.
  */
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
@@ -18,14 +21,17 @@ export async function GET(request: Request) {
     const doctorId = new URL(request.url).searchParams.get("doctorId");
 
     const notes = await prisma.voiceNote.findMany({
-      where: { status: "SAVED", actioned: false, ...(doctorId ? { doctorId } : {}) },
+      where: { actioned: false, ...(doctorId ? { doctorId } : {}) },
       orderBy: { createdAt: "desc" },
-      take: 50,
+      take: 100,
     });
-    // Only those with something to act on.
-    const relevant = notes.filter((n) => n.followUpRequired || (n.actionItems && n.actionItems !== "[]"));
 
-    const patientIds = [...new Set(relevant.map((n) => n.patientId))];
+    const pending = notes.filter((n) => n.status === "PENDING");
+    const actionable = notes.filter(
+      (n) => n.status === "SAVED" && (n.followUpRequired || (n.actionItems && n.actionItems !== "[]")),
+    );
+
+    const patientIds = [...new Set([...pending, ...actionable].map((n) => n.patientId))];
     const patients = patientIds.length
       ? await prisma.patient.findMany({
           where: { id: { in: patientIds } },
@@ -36,8 +42,18 @@ export async function GET(request: Request) {
 
     const safeParse = (s: string | null) => { try { return s ? JSON.parse(s) : []; } catch { return []; } };
 
-    const data = relevant.map((n) => ({
+    const pendingData = pending.map((n) => ({
       id: n.id,
+      kind: "pending" as const,
+      patientId: n.patientId,
+      patient: pmap.get(n.patientId) ?? null,
+      durationSec: n.durationSec,
+      createdAt: n.createdAt,
+    }));
+
+    const actionData = actionable.map((n) => ({
+      id: n.id,
+      kind: "action" as const,
       patientId: n.patientId,
       patient: pmap.get(n.patientId) ?? null,
       followUpRequired: n.followUpRequired,
@@ -48,7 +64,8 @@ export async function GET(request: Request) {
       createdAt: n.createdAt,
     }));
 
-    return NextResponse.json({ success: true, data });
+    // Pending (awaiting transcription) first, then transcribed action items.
+    return NextResponse.json({ success: true, data: [...pendingData, ...actionData] });
   } catch (error) {
     logger.api("GET", "/api/voice-notes/action-items", error);
     return NextResponse.json({ success: false, error: "internal_error" }, { status: 500 });
