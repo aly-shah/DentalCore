@@ -730,6 +730,19 @@ export function useSignNote(patientId: string) {
   });
 }
 
+export function useDeleteNote(patientId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ noteId }: { noteId: string }) =>
+      fetch(`/api/consultation-notes/${noteId}`, {
+        method: "DELETE",
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: queryKeys.patients.notes(patientId) });
+    },
+  });
+}
+
 export function useCreatePatientPrescription(patientId: string) {
   const qc = useQueryClient();
   return useMutation({

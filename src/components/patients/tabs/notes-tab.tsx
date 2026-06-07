@@ -1,18 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { FileText, ChevronDown, ChevronUp, Lock, ShieldCheck } from "lucide-react";
+import { FileText, ChevronDown, ChevronUp, Lock, ShieldCheck, Trash2 } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading";
-import { usePatientNotes, useSignNote } from "@/hooks/use-queries";
+import { usePatientNotes, useSignNote, useDeleteNote } from "@/hooks/use-queries";
 import { formatDate } from "@/lib/utils";
 import type { ConsultationNote } from "@/types";
 
 export function NotesTab({ patientId }: { patientId: string }) {
   const { data: response, isLoading } = usePatientNotes(patientId);
   const signNote = useSignNote(patientId);
+  const deleteNote = useDeleteNote(patientId);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   if (isLoading) return <LoadingSpinner />;
@@ -26,6 +27,12 @@ export function NotesTab({ patientId }: { patientId: string }) {
   const handleSign = (noteId: string) => {
     if (confirm("Are you sure you want to sign and lock this note? This action cannot be undone.")) {
       signNote.mutate({ noteId });
+    }
+  };
+
+  const handleDelete = (noteId: string) => {
+    if (confirm("Delete this consultation note? This cannot be undone.")) {
+      deleteNote.mutate({ noteId });
     }
   };
 
@@ -105,7 +112,16 @@ export function NotesTab({ patientId }: { patientId: string }) {
                     </div>
                   )}
                   {!note.isSigned && (
-                    <div className="pt-3 border-t border-stone-200 flex justify-end">
+                    <div className="pt-3 border-t border-stone-200 flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        iconLeft={<Trash2 className="w-3.5 h-3.5" />}
+                        onClick={() => handleDelete(note.id)}
+                        loading={deleteNote.isPending}
+                      >
+                        Delete
+                      </Button>
                       <Button
                         variant="success"
                         size="sm"

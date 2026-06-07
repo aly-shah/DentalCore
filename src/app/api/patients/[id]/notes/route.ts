@@ -55,7 +55,7 @@ export async function POST(
     const note = await prisma.consultationNote.create({
       data: {
         patientId: id,
-        appointmentId: body.appointmentId,
+        appointmentId: body.appointmentId || null,
         doctorId: body.doctorId,
         chiefComplaint: body.chiefComplaint,
         symptoms: body.symptoms,

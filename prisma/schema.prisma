@@ -540,7 +540,7 @@ model Appointment {
   createdAt        DateTime                 @default(now())
   updatedAt        DateTime                 @updatedAt
 
-  consultationNote ConsultationNote?
+  consultationNotes ConsultationNote[]
   procedures       Procedure[]
   invoice          Invoice?
   prescriptions    Prescription[]
@@ -561,8 +561,8 @@ model Appointment {
 model ConsultationNote {
   id                String      @id @default(cuid())
   tenantId          String?
-  appointmentId     String      @unique
-  appointment       Appointment @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
+  appointmentId     String?
+  appointment       Appointment? @relation(fields: [appointmentId], references: [id], onDelete: Cascade)
   patientId         String
   patient           Patient     @relation(fields: [patientId], references: [id])
   doctorId          String
