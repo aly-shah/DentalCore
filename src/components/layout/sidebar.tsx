@@ -74,6 +74,7 @@ const roleNavLayout: Record<string, NavSection[]> = {
 
 // Extra non-module routes (vitals, check-in, lab-results, packages)
 const extraRoutes: Record<string, { label: string; href: string; icon: string; afterModule: ModuleId; roles: string[] }[]> = {
+  "/notifications": [{ label: "Notifications", href: "/notifications", icon: "Bell", afterModule: "MOD-DASHBOARD", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT", "BILLING", "CALL_CENTER"] }],
   "/calendar": [{ label: "Calendar", href: "/calendar", icon: "Calendar", afterModule: "MOD-APPOINTMENT", roles: ["ADMIN", "SUPER_ADMIN", "DOCTOR", "RECEPTIONIST", "ASSISTANT"] }],
   "/vitals": [{ label: "Pre-Exam / Vitals", href: "/vitals", icon: "HeartPulse", afterModule: "MOD-PATIENT", roles: ["ASSISTANT"] }],
   "/appointments/check-in": [{ label: "Check-In", href: "/appointments/check-in", icon: "HeartPulse", afterModule: "MOD-APPOINTMENT", roles: ["RECEPTIONIST"] }],
@@ -219,6 +220,9 @@ export function Sidebar() {
                           {extra.href === "/admin/booking-requests" && (
                             <BookingRequestsBadge collapsed={!showLabels} active={exActive} />
                           )}
+                          {extra.href === "/notifications" && (
+                            <NotificationsBadge collapsed={!showLabels} active={exActive} />
+                          )}
                         </Link>
                       );
                     })}
@@ -329,6 +333,50 @@ function BookingRequestsBadge({ collapsed, active }: { collapsed: boolean; activ
     return (
       <span
         aria-label={`${count} pending booking${count === 1 ? "" : "s"}`}
+        className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white"
+      />
+    );
+  }
+
+  return (
+    <span
+      className={cn(
+        "ml-auto inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 text-[10px] font-bold rounded-full",
+        active ? "bg-blue-600 text-white" : "bg-red-500 text-white"
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
+/**
+ * Sidebar pill showing the current user's unread notification count
+ * (includes voice-note alerts). Polls every 30s + on window focus.
+ */
+function NotificationsBadge({ collapsed, active }: { collapsed: boolean; active: boolean }) {
+  const { user } = useAuth();
+  const { data } = useQuery({
+    queryKey: ["notifications-unread", user?.id],
+    queryFn: async () => {
+      const r = await fetch(`/api/notifications?userId=${user?.id}&unreadOnly=true`);
+      const j = await r.json();
+      if (!j.success) throw new Error("load_failed");
+      return j as { unreadCount: number };
+    },
+    enabled: !!user?.id,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    staleTime: 10_000,
+  });
+
+  const count = data?.unreadCount ?? 0;
+  if (count === 0) return null;
+
+  if (collapsed) {
+    return (
+      <span
+        aria-label={`${count} unread notification${count === 1 ? "" : "s"}`}
         className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white"
       />
     );
