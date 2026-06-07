@@ -3,27 +3,32 @@
 /**
  * Dashboard — Voice Note Updates.
  *
- * Surfaces AI-extracted action items from transcribed voice notes: a needed
- * follow-up (with the date the dentist mentioned) or other tasks. The doctor
- * can schedule the follow-up in one tap or dismiss it. Hidden when empty.
+ * Surfaces two things from voice notes: recordings still awaiting
+ * transcription (kind "pending"), and AI-extracted follow-ups / tasks from
+ * transcribed notes (kind "action"). Actions can be scheduled or dismissed
+ * in one tap; pending notes are informational. Hidden when empty.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
-import { Mic, CalendarPlus, X, Loader2, ChevronRight } from "lucide-react";
+import { Mic, CalendarPlus, X, Loader2, ChevronRight, Clock } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { cn, formatDate } from "@/lib/utils";
 
 interface ActionItem { item: string; priority?: string }
 interface VNItem {
   id: string;
+  kind: "pending" | "action";
   patientId: string;
   patient: { id: string; firstName: string; lastName: string; patientCode: string } | null;
-  followUpRequired: boolean;
-  followUpDate: string | null;
-  followUpReason: string | null;
-  actionItems: ActionItem[];
-  summary: string | null;
   createdAt: string;
+  // pending only
+  durationSec?: number;
+  // action only
+  followUpRequired?: boolean;
+  followUpDate?: string | null;
+  followUpReason?: string | null;
+  actionItems?: ActionItem[];
+  summary?: string | null;
 }
 
 const PRIORITY_STYLE: Record<string, string> = {
@@ -57,12 +62,46 @@ export function VoiceNoteUpdates({ doctorId }: { doctorId?: string }) {
             {items.length}
           </span>
         </div>
-        <p className="text-xs text-stone-500 mt-0.5">Actions the AI flagged from your transcribed notes</p>
+        <p className="text-xs text-stone-500 mt-0.5">Recordings awaiting transcription and AI-flagged follow-ups</p>
       </CardHeader>
       <CardContent className="p-0 divide-y divide-stone-100">
-        {items.map((it) => <Row key={it.id} it={it} doctorId={doctorId} />)}
+        {items.map((it) => it.kind === "pending"
+          ? <PendingRow key={it.id} it={it} />
+          : <Row key={it.id} it={it} doctorId={doctorId} />)}
       </CardContent>
     </Card>
+  );
+}
+
+function PendingRow({ it }: { it: VNItem }) {
+  const qc = useQueryClient();
+  const dismiss = useMutation({
+    mutationFn: async () => { await fetch(`/api/voice-notes/${it.id}`, { method: "PATCH" }); },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["voice-note-actions"] }),
+  });
+  const name = it.patient ? `${it.patient.firstName} ${it.patient.lastName}` : "Patient";
+  const dur = it.durationSec ?? 0;
+  const mmss = `${Math.floor(dur / 60)}:${String(dur % 60).padStart(2, "0")}`;
+
+  return (
+    <div className="p-3">
+      <div className="flex items-start justify-between gap-2">
+        <Link href={`/patients/${it.patientId}`} className="text-sm font-semibold text-stone-900 hover:text-blue-600 truncate">
+          {name}
+          {it.patient?.patientCode && <span className="ml-1.5 text-[10px] text-stone-400 font-mono">{it.patient.patientCode}</span>}
+        </Link>
+        <button onClick={() => dismiss.mutate()} disabled={dismiss.isPending} aria-label="Dismiss" className="text-stone-300 hover:text-stone-600 p-0.5 disabled:opacity-40 shrink-0">
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+        <Clock className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+        <span>
+          <span className="font-semibold">Awaiting transcription</span>
+          {dur > 0 ? ` · ${mmss}` : ""} · recorded {formatDate(it.createdAt)}
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -125,7 +164,7 @@ function Row({ it, doctorId }: { it: VNItem; doctorId?: string }) {
         </div>
       )}
 
-      {it.actionItems.length > 0 && (
+      {it.actionItems && it.actionItems.length > 0 && (
         <ul className="mt-1.5 space-y-1">
           {it.actionItems.map((a, i) => (
             <li key={i} className="flex items-center gap-1.5 text-[11px] text-stone-700">
