@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Phone, MessageSquare, Pencil, AlertTriangle, Droplets,
@@ -139,6 +139,12 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
   const router = useRouter();
   const { data: response, isLoading } = usePatient(id);
   const [activeTab, setActiveTab] = useState("overview");
+  // Deep-link support: open the tab named in ?tab= on first load
+  // (e.g. /patients/<id>?tab=notes). Read after mount to stay SSR/hydration-safe.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && t in TAB_COMPONENTS) setActiveTab(t);
+  }, []);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showBookModal, setShowBookModal] = useState(false);
   const [newTag, setNewTag] = useState("");
