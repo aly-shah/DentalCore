@@ -51,6 +51,42 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         status: "PENDING",
       },
     });
+
+    // Notify admins + front desk so they can transcribe / schedule a follow-up.
+    // Best-effort: a notification failure must not fail the (already saved) note.
+    try {
+      const [patient, doctor] = await Promise.all([
+        prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true, branchId: true } }),
+        prisma.user.findUnique({ where: { id: note.doctorId }, select: { name: true } }),
+      ]);
+      const staff = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          role: { in: ["RECEPTIONIST", "ADMIN", "SUPER_ADMIN"] },
+          ...(patient?.branchId ? { branchId: patient.branchId } : {}),
+        },
+        select: { id: true },
+      });
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : "a patient";
+      const dedupKey = `voice-note:${note.id}`;
+      await Promise.all(staff.map((u) =>
+        prisma.notification.upsert({
+          where: { userId_dedupKey: { userId: u.id, dedupKey } },
+          create: {
+            userId: u.id,
+            dedupKey,
+            title: `New voice note — ${patientName}`,
+            message: `${doctor?.name ?? "A doctor"} left a voice note awaiting transcription`,
+            type: "VOICE_NOTE",
+            link: `/patients/${patientId}`,
+          },
+          update: {},
+        })
+      ));
+    } catch (notifyError) {
+      logger.api("POST", "/api/patients/[id]/voice-notes (notify)", notifyError);
+    }
+
     return NextResponse.json({ success: true, data: note }, { status: 201 });
   } catch (error) {
     logger.api("POST", "/api/patients/[id]/voice-notes", error);

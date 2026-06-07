@@ -47,6 +47,8 @@ export async function GET(request: Request) {
       kind: "pending" as const,
       patientId: n.patientId,
       patient: pmap.get(n.patientId) ?? null,
+      doctorId: n.doctorId,
+      audioUrl: n.audioUrl,
       durationSec: n.durationSec,
       createdAt: n.createdAt,
     }));
