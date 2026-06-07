@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
+import { notifyClinicStaff } from "@/lib/notify";
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -78,6 +79,26 @@ export async function POST(
         },
       },
     });
+
+    // Notify admins + front desk so they can action any follow-up.
+    // Best-effort: must not fail the (already saved) note.
+    try {
+      const patient = await prisma.patient.findUnique({ where: { id }, select: { firstName: true, lastName: true, branchId: true } });
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : "a patient";
+      const followUp = note.followUpDate
+        ? ` · follow-up ${note.followUpDate.toISOString().slice(0, 10)}`
+        : "";
+      await notifyClinicStaff({
+        branchId: patient?.branchId,
+        dedupKey: `consult-note:${note.id}`,
+        title: `New note — ${patientName}`,
+        message: `${note.doctor?.name ?? "A doctor"} added a consultation note${followUp}`,
+        type: "CONSULTATION_NOTE",
+        link: `/patients/${id}?tab=notes`,
+      });
+    } catch (notifyError) {
+      logger.api("POST", "/api/patients/[id]/notes (notify)", notifyError);
+    }
 
     return NextResponse.json(
       { success: true, data: note },
