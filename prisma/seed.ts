@@ -89,13 +89,23 @@ async function main() {
   }
   console.log(`  Patients: ${mockPatients.length}`);
 
+  // The UI's LeadStatus enum (src/types) has values the Prisma LeadStatus enum
+  // lacks (INTERESTED, NOT_INTERESTED). Map those to the closest DB values so
+  // the seed persists cleanly; remaining values pass through unchanged.
+  const leadStatusToDb: Record<string, string> = { INTERESTED: "QUALIFIED", NOT_INTERESTED: "LOST" };
   for (const l of mockLeads) {
-    await prisma.lead.create({ data: { id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source as string, status: l.status as any, interest: l.interest, assignedToId: l.assignedToId, branchId: l.branchId, notes: l.notes, convertedPatientId: l.convertedPatientId, callbackDate: toDate(l.callbackDate) } });
+    const status = leadStatusToDb[l.status as string] ?? (l.status as string);
+    await prisma.lead.create({ data: { id: l.id, name: l.name, phone: l.phone, email: l.email, source: l.source as string, status: status as any, interest: l.interest, assignedToId: l.assignedToId, branchId: l.branchId, notes: l.notes, convertedPatientId: l.convertedPatientId, callbackDate: toDate(l.callbackDate) } });
   }
   console.log(`  Leads: ${mockLeads.length}`);
 
+  // The UI's WorkflowStage enum is finer-grained than the Prisma
+  // AppointmentWorkflowStage enum (BOOKED/CHECKIN/CHECKOUT/BILLING/COMPLETED).
+  // In-chair stages (WAITING/TREATMENT/HISTORY_UPDATE) collapse to CHECKIN.
+  const workflowStageToDb: Record<string, string> = { WAITING: "CHECKIN", TREATMENT: "CHECKIN", HISTORY_UPDATE: "CHECKIN" };
   for (const a of mockAppointments) {
-    await prisma.appointment.create({ data: { id: a.id, appointmentCode: a.appointmentCode, patientId: a.patientId, doctorId: a.doctorId, branchId: a.branchId, roomId: a.roomId, date: new Date(a.date), startTime: a.startTime, endTime: a.endTime, type: a.type as string, status: a.status as any, notes: a.notes, priority: a.priority as string, waitlistPosition: a.waitlistPosition, checkinTime: toDate(a.checkinTime), checkoutTime: toDate(a.checkoutTime), workflowStage: a.workflowStage as any, createdById: a.createdBy } });
+    const workflowStage = workflowStageToDb[a.workflowStage as string] ?? (a.workflowStage as string);
+    await prisma.appointment.create({ data: { id: a.id, appointmentCode: a.appointmentCode, patientId: a.patientId, doctorId: a.doctorId, branchId: a.branchId, roomId: a.roomId, date: new Date(a.date), startTime: a.startTime, endTime: a.endTime, type: a.type as string, status: a.status as any, notes: a.notes, priority: a.priority as string, waitlistPosition: a.waitlistPosition, checkinTime: toDate(a.checkinTime), checkoutTime: toDate(a.checkoutTime), workflowStage: workflowStage as any, createdById: a.createdBy } });
   }
   console.log(`  Appointments: ${mockAppointments.length}`);
 

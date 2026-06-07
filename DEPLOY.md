@@ -204,13 +204,23 @@ Then run `npx prisma migrate dev --name switch_to_postgres` **locally** once, co
 
 Two workflows, both committed to `.github/workflows/`:
 
-### `ci.yml` — runs on every PR + push
+### `ci.yml` — runs on PRs into `main` and on pushes to feature branches
 
-- lint, typecheck, build against a disposable Postgres service, run migrations cleanly, and upload the build as an artifact.
+- Spins up a disposable Postgres service, generates the Prisma client, syncs
+  the schema with `prisma db push`, then runs typecheck (`tsc --noEmit`),
+  the test suite (`vitest`), and `next build`.
+- Lint is not run yet — ESLint isn't installed in the project; add it and a
+  `next lint`/ESLint-CLI step here when ready.
 
-### `deploy.yml` — runs on push to `main` (after `ci.yml` passes)
+### `deploy.yml` — runs on push to `main`
 
-- SSH into the VPS, `git pull`, install deps, run migrations, build, `pm2 reload` (zero-downtime).
+- SSH into the VPS, `git reset --hard origin/main`, install deps, run
+  migrations, build, `pm2 reload` (zero-downtime).
+- **`deploy.yml` does not automatically wait for `ci.yml`.** They have
+  separate triggers (deploy on `main` push, CI on PRs/feature branches). To
+  actually gate production on CI, make the **`verify` job a required status
+  check** in Settings → Branches → branch-protection for `main`, and merge
+  via PR rather than pushing straight to `main`.
 
 Both files are in `.github/workflows/` in this repo.
 
