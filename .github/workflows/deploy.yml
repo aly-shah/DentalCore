@@ -72,6 +72,9 @@ jobs:
             echo ">>> tenant backfill (idempotent)"
             npx tsx prisma/backfill-tenant.ts || echo "(backfill skipped — non-fatal)"
 
+            echo ">>> voice-note notification backfill (idempotent)"
+            npx tsx prisma/backfill-voice-note-notifications.ts || echo "(vn-notif backfill skipped — non-fatal)"
+
             echo ">>> next build"
             npm run build
 

@@ -11,6 +11,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
+import { notifyClinicStaff } from "@/lib/notify";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -59,30 +60,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         prisma.patient.findUnique({ where: { id: patientId }, select: { firstName: true, lastName: true, branchId: true } }),
         prisma.user.findUnique({ where: { id: note.doctorId }, select: { name: true } }),
       ]);
-      const staff = await prisma.user.findMany({
-        where: {
-          isActive: true,
-          role: { in: ["RECEPTIONIST", "ADMIN", "SUPER_ADMIN"] },
-          ...(patient?.branchId ? { branchId: patient.branchId } : {}),
-        },
-        select: { id: true },
-      });
       const patientName = patient ? `${patient.firstName} ${patient.lastName}` : "a patient";
-      const dedupKey = `voice-note:${note.id}`;
-      await Promise.all(staff.map((u) =>
-        prisma.notification.upsert({
-          where: { userId_dedupKey: { userId: u.id, dedupKey } },
-          create: {
-            userId: u.id,
-            dedupKey,
-            title: `New voice note — ${patientName}`,
-            message: `${doctor?.name ?? "A doctor"} left a voice note awaiting transcription`,
-            type: "VOICE_NOTE",
-            link: `/patients/${patientId}`,
-          },
-          update: {},
-        })
-      ));
+      await notifyClinicStaff({
+        branchId: patient?.branchId,
+        dedupKey: `voice-note:${note.id}`,
+        title: `New voice note — ${patientName}`,
+        message: `${doctor?.name ?? "A doctor"} left a voice note awaiting transcription`,
+        type: "VOICE_NOTE",
+        link: `/patients/${patientId}`,
+      });
     } catch (notifyError) {
       logger.api("POST", "/api/patients/[id]/voice-notes (notify)", notifyError);
     }
