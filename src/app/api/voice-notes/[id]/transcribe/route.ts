@@ -132,6 +132,24 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
       },
     });
 
+    // Refresh the staff bell notification now that the transcript exists,
+    // so it shows the content instead of "awaiting transcription".
+    try {
+      const patient = await prisma.patient.findUnique({ where: { id: vn.patientId }, select: { firstName: true, lastName: true } });
+      const patientName = patient ? `${patient.firstName} ${patient.lastName}` : "a patient";
+      const snippet = (structured.summary || transcript || "").trim().slice(0, 140);
+      await prisma.notification.updateMany({
+        where: { dedupKey: `voice-note:${vn.id}` },
+        data: {
+          title: `Voice note transcribed — ${patientName}`,
+          message: snippet || "Transcription ready",
+          isRead: false,
+        },
+      });
+    } catch (notifyError) {
+      logger.api("POST", "/api/voice-notes/[id]/transcribe (notify)", notifyError);
+    }
+
     return NextResponse.json({ success: true, data: { noteId, filedAsNote: !!noteId, transcript, structured } });
   } catch (error) {
     logger.api("POST", "/api/voice-notes/[id]/transcribe", error);

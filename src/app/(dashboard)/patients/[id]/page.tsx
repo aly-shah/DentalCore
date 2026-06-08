@@ -30,6 +30,7 @@ const AppointmentsTab = lazy(() => import("@/components/patients/tabs/appointmen
 const MedicalHistoryTab = lazy(() => import("@/components/patients/tabs/medical-history-tab").then((m) => ({ default: m.MedicalHistoryTab })));
 const SkinHistoryTab = lazy(() => import("@/components/patients/tabs/skin-history-tab").then((m) => ({ default: m.SkinHistoryTab })));
 const NotesTab = lazy(() => import("@/components/patients/tabs/notes-tab").then((m) => ({ default: m.NotesTab })));
+const VoiceNotesTab = lazy(() => import("@/components/patients/tabs/voice-notes-tab").then((m) => ({ default: m.VoiceNotesTab })));
 const ProceduresTab = lazy(() => import("@/components/patients/tabs/procedures-tab").then((m) => ({ default: m.ProceduresTab })));
 const PrescriptionsTab = lazy(() => import("@/components/patients/tabs/prescriptions-tab").then((m) => ({ default: m.PrescriptionsTab })));
 const ImagesTab = lazy(() => import("@/components/patients/tabs/images-tab").then((m) => ({ default: m.ImagesTab })));
@@ -86,6 +87,7 @@ const TAB_GROUPS = [
       { value: "treatment-plans", label: "Treatment Plans" },
       { value: "braces", label: "Braces" },
       { value: "notes", label: "Notes" },
+      { value: "voice-notes", label: "Voice Notes" },
       { value: "prescriptions", label: "Rx" },
       { value: "procedures", label: "Procedures" },
       { value: "labs", label: "Imaging" },
@@ -120,6 +122,7 @@ const TAB_COMPONENTS: Record<string, React.FC<{ patientId: string; patient?: Pat
   braces: ({ patientId }) => <BracesTab patientId={patientId} />,
   appointments: ({ patientId }) => <AppointmentsTab patientId={patientId} />,
   notes: ({ patientId }) => <NotesTab patientId={patientId} />,
+  "voice-notes": ({ patientId }) => <VoiceNotesTab patientId={patientId} />,
   "skin-history": ({ patientId }) => <SkinHistoryTab patientId={patientId} />,
   "medical-history": ({ patient }) => patient ? <MedicalHistoryTab patient={patient} /> : null,
   procedures: ({ patientId }) => <ProceduresTab patientId={patientId} />,

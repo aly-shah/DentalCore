@@ -33,6 +33,7 @@ interface VNItem {
   followUpReason?: string | null;
   actionItems?: ActionItem[];
   summary?: string | null;
+  transcript?: string | null;
 }
 
 const PRIORITY_STYLE: Record<string, string> = {
@@ -225,6 +226,7 @@ function Row({ it, doctorId }: { it: VNItem; doctorId?: string }) {
 
   const name = it.patient ? `${it.patient.firstName} ${it.patient.lastName}` : "Patient";
   const busy = schedule.isPending || dismiss.isPending;
+  const [showTranscript, setShowTranscript] = useState(false);
 
   return (
     <div className="p-3">
@@ -239,6 +241,18 @@ function Row({ it, doctorId }: { it: VNItem; doctorId?: string }) {
       </div>
 
       {it.summary && <p className="text-[11px] text-stone-500 mt-0.5 line-clamp-2">{it.summary}</p>}
+
+      {it.transcript && (
+        <div className="mt-1">
+          <button onClick={() => setShowTranscript((s) => !s)} className="inline-flex items-center gap-1 text-[10px] font-semibold text-violet-600 hover:text-violet-700">
+            <ChevronRight className={cn("w-3 h-3 transition-transform", showTranscript && "rotate-90")} />
+            {showTranscript ? "Hide transcript" : "View transcript"}
+          </button>
+          {showTranscript && (
+            <p className="mt-1 text-[11px] text-stone-600 whitespace-pre-wrap bg-white border border-stone-200 rounded-lg px-2.5 py-1.5 max-h-48 overflow-y-auto">{it.transcript}</p>
+          )}
+        </div>
+      )}
 
       {it.followUpRequired && (
         <div className="mt-2 flex items-start gap-1.5 text-xs text-violet-900 bg-white border border-violet-200 rounded-lg px-2.5 py-1.5">
