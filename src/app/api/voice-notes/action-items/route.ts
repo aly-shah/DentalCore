@@ -63,6 +63,7 @@ export async function GET(request: Request) {
       followUpReason: n.followUpReason,
       actionItems: safeParse(n.actionItems) as { item: string; priority?: string }[],
       summary: (safeParse(n.structuredNote) as { summary?: string }).summary ?? null,
+      transcript: n.transcript ?? null,
       createdAt: n.createdAt,
     }));
 
