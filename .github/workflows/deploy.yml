@@ -67,6 +67,19 @@ jobs:
             fi
             free -h || true
 
+            # Uploaded media (voice notes, patient docs) must live in a
+            # persistent dir nginx serves (location /uploads/ ->
+            # /var/www/dentacore/uploads) and survive deploys. Make
+            # public/uploads a symlink to it. Idempotent.
+            echo ">>> ensure uploads symlink"
+            mkdir -p /var/www/dentacore/uploads
+            if [ ! -L public/uploads ]; then
+              [ -d public/uploads ] && find public/uploads -mindepth 1 -maxdepth 1 -exec mv -t /var/www/dentacore/uploads/ {} + 2>/dev/null || true
+              rm -rf public/uploads
+              ln -s /var/www/dentacore/uploads public/uploads
+              echo "(uploads symlink created)"
+            fi
+
             echo ">>> npm ci"
             npm ci --legacy-peer-deps --no-audit --no-fund
 
