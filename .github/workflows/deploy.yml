@@ -65,7 +65,6 @@ jobs:
                 && echo "(swap enabled)" \
                 || echo "(swap setup skipped — needs a swapfile or passwordless sudo on the VPS)"
             fi
-            pkill -9 -f 'next build' 2>/dev/null || true
             free -h || true
 
             echo ">>> npm ci"
