@@ -82,7 +82,7 @@ export default function PackagesPage() {
               {/* Treatments list */}
               <div className="space-y-1.5">
                 <p className="text-xs font-medium text-stone-400 uppercase tracking-wider">Includes</p>
-                {pkg.treatments.map((t) => (
+                {(pkg.treatments ?? []).map((t) => (
                   <div key={t.treatmentId} className="flex items-center justify-between text-sm">
                     <span className="text-stone-600 truncate min-w-0">{t.treatmentName}</span>
                     <Badge variant="default">{t.sessions} sessions</Badge>
