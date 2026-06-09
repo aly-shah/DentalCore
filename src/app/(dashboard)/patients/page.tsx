@@ -17,7 +17,7 @@ import { formatDate, formatCurrency } from "@/lib/utils";
 import { AddPatientModal } from "@/components/patients/add-patient-modal";
 import { CreateAppointmentModal } from "@/components/appointments/create-appointment-modal";
 import { useModuleAccess } from "@/modules/core/hooks";
-import { usePatients } from "@/hooks/use-queries";
+import { usePatients, useTreatments, useStaff, useBranches, usePatientTagList } from "@/hooks/use-queries";
 import { cn } from "@/lib/utils";
 import { downloadCSV } from "@/lib/export";
 import Link from "next/link";
@@ -38,6 +38,12 @@ export default function PatientsPage() {
   const [showBookModal, setShowBookModal] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [page, setPage] = useState(1);
+  // Roster filters
+  const [treatmentId, setTreatmentId] = useState("");
+  const [ortho, setOrtho] = useState(false);
+  const [tag, setTag] = useState("");
+  const [branchId, setBranchId] = useState("");
+  const [doctorId, setDoctorId] = useState("");
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
@@ -51,8 +57,25 @@ export default function PatientsPage() {
   if (debouncedSearch) apiParams.search = debouncedSearch;
   if (quickFilter === "active") apiParams.status = "active";
   if (quickFilter === "inactive") apiParams.status = "inactive";
+  if (treatmentId) apiParams.treatmentId = treatmentId;
+  if (ortho) apiParams.ortho = "true";
+  if (tag) apiParams.tag = tag;
+  if (branchId) apiParams.branchId = branchId;
+  if (doctorId) apiParams.doctorId = doctorId;
 
   const { data: response, isLoading } = usePatients(apiParams);
+
+  // Filter option lists
+  const { data: treatmentsRes } = useTreatments();
+  const { data: staffRes } = useStaff();
+  const { data: branchesRes } = useBranches();
+  const { data: tagList } = usePatientTagList();
+  const treatmentOpts = ((treatmentsRes as { data?: { id: string; name: string }[] } | undefined)?.data ?? []);
+  const doctorOpts = (((staffRes as { data?: { id: string; name: string; role: string }[] } | undefined)?.data ?? []).filter((u) => u.role === "DOCTOR"));
+  const branchOpts = ((branchesRes as { data?: { id: string; name: string }[] } | undefined)?.data ?? []);
+  const tagOpts = (tagList ?? []);
+  const hasFilters = !!(treatmentId || ortho || tag || branchId || doctorId);
+  const clearFilters = () => { setTreatmentId(""); setOrtho(false); setTag(""); setBranchId(""); setDoctorId(""); setPage(1); };
   const patients = (response?.data || []) as Patient[];
   const pagination = (response as unknown as Record<string, unknown>)?.pagination as Record<string, number> | undefined;
   const totalPages = pagination?.totalPages || 1;
@@ -168,6 +191,45 @@ export default function PatientsPage() {
             <LayoutGrid className="w-4 h-4" />
           </button>
         </div>
+        </div>
+
+        {/* ===== ROSTER FILTERS ===== */}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-stone-400"><Filter className="w-3.5 h-3.5" /> Filter</span>
+          <select value={treatmentId} onChange={(e) => { setTreatmentId(e.target.value); setPage(1); }}
+            className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-600 max-w-[170px] cursor-pointer">
+            <option value="">All treatments</option>
+            {treatmentOpts.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <button onClick={() => { setOrtho(!ortho); setPage(1); }}
+            className={cn("px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer",
+              ortho ? "bg-violet-600 text-white border-violet-600" : "bg-white text-stone-600 border-stone-200 hover:border-stone-300")}>
+            Ortho / Braces
+          </button>
+          {tagOpts.length > 0 && (
+            <select value={tag} onChange={(e) => { setTag(e.target.value); setPage(1); }}
+              className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-600 max-w-[150px] cursor-pointer">
+              <option value="">All tags</option>
+              {tagOpts.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          )}
+          {branchOpts.length > 1 && (
+            <select value={branchId} onChange={(e) => { setBranchId(e.target.value); setPage(1); }}
+              className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-600 max-w-[160px] cursor-pointer">
+              <option value="">All branches</option>
+              {branchOpts.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+            </select>
+          )}
+          <select value={doctorId} onChange={(e) => { setDoctorId(e.target.value); setPage(1); }}
+            className="text-xs border border-stone-200 rounded-lg px-2.5 py-1.5 bg-white text-stone-600 max-w-[170px] cursor-pointer">
+            <option value="">All doctors</option>
+            {doctorOpts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+          </select>
+          {hasFilters && (
+            <button onClick={clearFilters} className="inline-flex items-center gap-1 text-xs font-medium text-stone-500 hover:text-stone-700 px-2 py-1.5 cursor-pointer">
+              <X className="w-3.5 h-3.5" /> Clear
+            </button>
+          )}
         </div>
       </div>
 

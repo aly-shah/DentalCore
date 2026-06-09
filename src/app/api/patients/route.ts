@@ -50,6 +50,24 @@ export async function GET(request: Request) {
       where.isActive = false;
     }
 
+    // Relation filters: by treatment (performed procedure or planned item),
+    // by ortho/braces (has any ortho case), and by patient tag.
+    const treatmentId = searchParams.get("treatmentId");
+    const ortho = searchParams.get("ortho");
+    const tag = searchParams.get("tag");
+    const relFilters: Prisma.PatientWhereInput[] = [];
+    if (treatmentId) {
+      relFilters.push({
+        OR: [
+          { procedures: { some: { treatmentId } } },
+          { treatmentPlans: { some: { items: { some: { treatmentId } } } } },
+        ],
+      });
+    }
+    if (ortho === "true") relFilters.push({ orthoCases: { some: {} } });
+    if (tag) relFilters.push({ tags: { some: { tag } } });
+    if (relFilters.length) where.AND = relFilters;
+
     const [data, total] = await Promise.all([
       prisma.patient.findMany({
         where,
