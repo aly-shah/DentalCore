@@ -1,5 +1,10 @@
 name: Deploy
 
+# Build the app on the GitHub runner (clean, fast, no contention) and ship
+# the finished .next + node_modules to the VPS via rsync. The box only runs
+# migrations + pm2 reload — it never runs npm ci / next build, so deploys no
+# longer compete with the other apps on the shared VPS for CPU/RAM.
+
 on:
   push:
     branches: [main]
@@ -11,102 +16,90 @@ concurrency:
 
 jobs:
   deploy:
-    name: SSH deploy to scalamedic VPS
+    name: Build in CI + ship to scalamedic VPS
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 25
 
     steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"   # match the VPS runtime for native-module compat
+
+      - name: Install deps
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Build
+        run: NODE_OPTIONS=--max-old-space-size=4096 npm run build
+
       - name: Decode SSH key
-        id: ssh
         env:
           SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
         run: |
           if [ -z "$SSH_PRIVATE_KEY_B64" ]; then
-            echo "::error::SSH_PRIVATE_KEY_B64 secret is not set"
-            exit 1
+            echo "::error::SSH_PRIVATE_KEY_B64 secret is not set"; exit 1
           fi
           install -d -m 700 ~/.ssh
           echo "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/ci_deploy
           chmod 600 ~/.ssh/ci_deploy
-          ssh-keygen -lf ~/.ssh/ci_deploy
-          echo "key_path=$HOME/.ssh/ci_deploy" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key_path: ${{ steps.ssh.outputs.key_path }}
-          port: ${{ secrets.SSH_PORT }}
-          script_stop: true
-          command_timeout: 25m
-          script: |
-            set -euo pipefail
+      - name: Ship build artifacts to the VPS
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          SSH="ssh -i ~/.ssh/ci_deploy -p ${PORT:-22} -o StrictHostKeyChecking=accept-new"
+          DEST="$USER@$HOST:/var/www/dentacore/current"
+          # node_modules first (delta), then .next without the build cache
+          rsync -az --delete -e "$SSH" node_modules/ "$DEST/node_modules/"
+          rsync -az --delete --exclude='/cache/' -e "$SSH" .next/ "$DEST/.next/"
 
-            APP_DIR="/var/www/dentacore/current"
-            PM2_NAME="dentacore"
+      - name: Migrate + reload on the VPS
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+          SHA: ${{ github.sha }}
+        run: |
+          ssh -i ~/.ssh/ci_deploy -p "${PORT:-22}" -o StrictHostKeyChecking=accept-new "$USER@$HOST" "SHA=$SHA bash -se" <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/dentacore/current
 
-            echo ">>> Deploying to $APP_DIR (pm2: $PM2_NAME)"
-            cd "$APP_DIR"
+          echo ">>> sync source to the built commit"
+          git fetch --all --prune
+          git reset --hard "$SHA"   # matches the artifacts CI just shipped
 
-            echo ">>> git fetch + reset"
-            git fetch --all --prune
-            git reset --hard origin/main
+          echo ">>> ensure uploads symlink (persistent media dir nginx serves)"
+          mkdir -p /var/www/dentacore/uploads
+          if [ ! -L public/uploads ]; then
+            [ -d public/uploads ] && find public/uploads -mindepth 1 -maxdepth 1 -exec mv -t /var/www/dentacore/uploads/ {} + 2>/dev/null || true
+            rm -rf public/uploads
+            ln -s /var/www/dentacore/uploads public/uploads
+          fi
 
-            # The 4GB VPS has no swap headroom and was OOM-killing `npm ci`
-            # (exit 137). Ensure a 2G swapfile + free stray build memory so
-            # install/build survive. Uses `sudo -n` so it skips cleanly when
-            # the deploy user lacks passwordless sudo; never fails the deploy.
-            echo ">>> ensure swap + free memory"
-            if ! sudo -n swapon --show 2>/dev/null | grep -q '/swapfile'; then
-              { sudo -n fallocate -l 2G /swapfile 2>/dev/null || sudo -n dd if=/dev/zero of=/swapfile bs=1M count=2048 2>/dev/null; } \
-                && sudo -n chmod 600 /swapfile && sudo -n mkswap /swapfile && sudo -n swapon /swapfile \
-                && { grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo -n tee -a /etc/fstab >/dev/null; } \
-                && echo "(swap enabled)" \
-                || echo "(swap setup skipped — needs a swapfile or passwordless sudo on the VPS)"
-            fi
-            free -h || true
+          echo ">>> prisma migrate"
+          npx prisma migrate resolve --applied 20260514000000_baseline 2>/dev/null || true
+          npx prisma migrate deploy
 
-            # Uploaded media (voice notes, patient docs) must live in a
-            # persistent dir nginx serves (location /uploads/ ->
-            # /var/www/dentacore/uploads) and survive deploys. Make
-            # public/uploads a symlink to it. Idempotent.
-            echo ">>> ensure uploads symlink"
-            mkdir -p /var/www/dentacore/uploads
-            if [ ! -L public/uploads ]; then
-              [ -d public/uploads ] && find public/uploads -mindepth 1 -maxdepth 1 -exec mv -t /var/www/dentacore/uploads/ {} + 2>/dev/null || true
-              rm -rf public/uploads
-              ln -s /var/www/dentacore/uploads public/uploads
-              echo "(uploads symlink created)"
-            fi
+          echo ">>> backfills (idempotent)"
+          npx tsx prisma/backfill-tenant.ts || echo "(tenant backfill skipped — non-fatal)"
+          npx tsx prisma/backfill-voice-note-notifications.ts || echo "(vn-notif backfill skipped — non-fatal)"
 
-            echo ">>> npm ci"
-            npm ci --legacy-peer-deps --no-audit --no-fund
+          echo ">>> pm2 reload (zero-downtime)"
+          pm2 reload dentacore --update-env
+          pm2 save
+          echo ">>> done"
+          REMOTE
 
-            echo ">>> prisma generate"
-            npx prisma generate
-
-            # One-time baseline: tell Prisma that the existing schema
-            # (previously applied via db push) is "already applied".
-            # Idempotent after the first run — re-running errors out
-            # silently, which we swallow with || true.
-            echo ">>> prisma migrate baseline (idempotent)"
-            npx prisma migrate resolve --applied 20260514000000_baseline 2>/dev/null || true
-
-            echo ">>> prisma migrate deploy"
-            npx prisma migrate deploy
-
-            echo ">>> tenant backfill (idempotent)"
-            npx tsx prisma/backfill-tenant.ts || echo "(backfill skipped — non-fatal)"
-
-            echo ">>> voice-note notification backfill (idempotent)"
-            npx tsx prisma/backfill-voice-note-notifications.ts || echo "(vn-notif backfill skipped — non-fatal)"
-
-            echo ">>> next build (cap heap to survive on the small VPS)"
-            NODE_OPTIONS=--max-old-space-size=2048 npm run build
-
-            echo ">>> pm2 reload (zero-downtime)"
-            pm2 reload "$PM2_NAME" --update-env
-            pm2 save
-
-            echo ">>> done"
+      - name: Verify
+        run: |
+          for i in 1 2 3; do
+            code=$(curl -s -o /dev/null -m 15 -w '%{http_code}' https://dental.scalamedic.com/api/health || true)
+            echo "health=$code"; [ "$code" = "200" ] && exit 0; sleep 5
+          done
+          echo "::warning::health check did not return 200"
