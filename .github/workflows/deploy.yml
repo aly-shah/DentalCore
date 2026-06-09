@@ -28,9 +28,9 @@ jobs:
       AUTH_SECRET: ci-not-a-real-secret-ci-not-a-real-secret-0123
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "22"   # match the VPS runtime for native-module compat
 
