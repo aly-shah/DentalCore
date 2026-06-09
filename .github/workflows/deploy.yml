@@ -20,6 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
 
+    # Build-time placeholders so module-load doesn't throw while Next collects
+    # page data (some routes read these at import). The REAL values live only
+    # in the VPS .env and are used at runtime — never these.
+    env:
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/dentacore_ci
+      AUTH_SECRET: ci-not-a-real-secret-ci-not-a-real-secret-0123
+
     steps:
       - uses: actions/checkout@v4
 
