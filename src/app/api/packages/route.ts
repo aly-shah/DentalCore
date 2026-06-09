@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     const packages = await prisma.package.findMany({
       where,
       include: {
+        treatments: true,
         _count: { select: { patientPackages: true } },
       },
       orderBy: { name: "asc" },
