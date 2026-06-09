@@ -447,6 +447,19 @@ export function useTreatments(params?: Record<string, string>) {
   });
 }
 
+// Distinct patient tags in use — for the patients filter dropdown.
+export function usePatientTagList() {
+  return useQuery({
+    queryKey: ["patient-tag-list"],
+    queryFn: async (): Promise<string[]> => {
+      const r = await fetch("/api/patient-tags");
+      const j = await r.json();
+      if (!j.success) throw new Error(j.error || "Failed");
+      return j.data as string[];
+    },
+  });
+}
+
 export function useCreateTreatment() {
   const qc = useQueryClient();
   return useMutation({
