@@ -13,6 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { PortalLinkButton } from "@/components/patients/portal-link-button";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { usePatient, usePatientTags, useAddPatientTag, useRemovePatientTag } from "@/hooks/use-queries";
 import { formatDate, formatCurrency, calculateAge } from "@/lib/utils";
@@ -208,6 +209,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
               className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center hover:bg-emerald-100 transition-colors">
               <MessageSquare className="w-4 h-4" />
             </a>
+            <PortalLinkButton patientId={id} phone={patient.phone} />
             <button onClick={() => setShowEditModal(true)} className="w-9 h-9 rounded-xl bg-stone-100 text-stone-500 flex items-center justify-center hover:bg-stone-200 transition-colors cursor-pointer">
               <Pencil className="w-4 h-4" />
             </button>
