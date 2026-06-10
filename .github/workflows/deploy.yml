@@ -26,6 +26,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://postgres:ci@localhost:5432/dentacore_ci
       AUTH_SECRET: ci-not-a-real-secret-ci-not-a-real-secret-0123
+      # NEXT_PUBLIC_* are inlined at build time — set the public origin so
+      # patient-portal links resolve to the real domain, not localhost:9000.
+      NEXT_PUBLIC_SITE_URL: https://dental.scalamedic.com
 
     steps:
       - uses: actions/checkout@v5
