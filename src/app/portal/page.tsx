@@ -9,7 +9,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Calendar, Pill, Receipt, CalendarClock, AlertTriangle,
-  CheckCircle2, Stethoscope, Loader2, CreditCard,
+  CheckCircle2, Stethoscope, Loader2, CreditCard, ClipboardList, FileText, ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -57,6 +57,22 @@ interface PortalData {
     dueDate: string | null;
     status: string;
   }[];
+  documents: {
+    id: string;
+    name: string;
+    type: string;
+    fileUrl: string | null;
+    createdAt: string;
+  }[];
+  treatmentPlans: {
+    id: string;
+    title: string | null;
+    status: string;
+    totalCost: number;
+    estimatedPatientPortion: number;
+    createdAt: string;
+    items: { description: string; total: number; status: string }[];
+  }[];
 }
 
 export default function PatientPortalPage() {
@@ -78,7 +94,7 @@ function PortalInner() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<PortalData | null>(null);
-  const [tab, setTab] = useState<"visits" | "billing" | "rx" | "followups">("visits");
+  const [tab, setTab] = useState<"visits" | "billing" | "rx" | "followups" | "plans" | "documents">("visits");
   const [payingId, setPayingId] = useState<string | null>(null);
   const [payError, setPayError] = useState<string | null>(null);
 
@@ -171,6 +187,8 @@ function PortalInner() {
     { id: "billing" as const,   label: "Billing",      count: data.invoices.length,     icon: <Receipt       className="w-4 h-4" /> },
     { id: "rx" as const,        label: "Prescriptions",count: data.prescriptions.length,icon: <Pill          className="w-4 h-4" /> },
     { id: "followups" as const, label: "Follow-ups",   count: data.followUps.length,    icon: <CalendarClock className="w-4 h-4" /> },
+    { id: "plans" as const,     label: "Treatment Plans", count: data.treatmentPlans.length, icon: <ClipboardList className="w-4 h-4" /> },
+    { id: "documents" as const, label: "Documents",    count: data.documents.length,    icon: <FileText className="w-4 h-4" /> },
   ];
 
   return (
@@ -347,6 +365,59 @@ function PortalInner() {
                         Due {fu.dueDate ? formatDate(fu.dueDate) : "TBD"}
                       </p>
                     </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        )}
+
+        {tab === "plans" && (
+          <div className="space-y-2">
+            {data.treatmentPlans.length === 0
+              ? <Empty text="No treatment plans" />
+              : data.treatmentPlans.map((pl) => (
+                <Card key={pl.id}>
+                  <CardContent className="p-4 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <ClipboardList className="w-4 h-4 text-blue-500 shrink-0" />
+                        <span className="text-sm font-medium text-stone-900 truncate">{pl.title || "Treatment plan"}</span>
+                      </div>
+                      <Badge variant={pl.status === "COMPLETED" ? "success" : (pl.status === "ACCEPTED" || pl.status === "IN_PROGRESS") ? "info" : "default"} className="text-[10px]">{pl.status.replace(/_/g, " ")}</Badge>
+                    </div>
+                    {pl.items.map((it, j) => (
+                      <div key={j} className="flex items-center justify-between text-xs text-stone-600 ml-6">
+                        <span className="truncate">{it.description}</span>
+                        <span className="font-medium text-stone-700 shrink-0 ml-2">{formatCurrency(it.total)}</span>
+                      </div>
+                    ))}
+                    <div className="flex items-center justify-between border-t border-stone-100 pt-2 text-xs">
+                      <span className="text-stone-400">Estimated</span>
+                      <span className="font-bold text-stone-900">{formatCurrency(pl.estimatedPatientPortion || pl.totalCost)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+          </div>
+        )}
+
+        {tab === "documents" && (
+          <div className="space-y-2">
+            {data.documents.length === 0
+              ? <Empty text="No documents shared" />
+              : data.documents.map((d) => (
+                <Card key={d.id}>
+                  <CardContent className="p-4 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center text-stone-500"><FileText className="w-5 h-5" /></div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-stone-900 truncate">{d.name}</p>
+                      <p className="text-xs text-stone-400">{d.type.replace(/_/g, " ")} · {formatDate(d.createdAt)}</p>
+                    </div>
+                    {d.fileUrl && (
+                      <a href={d.fileUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-700 shrink-0">
+                        <ExternalLink className="w-3.5 h-3.5" /> Open
+                      </a>
+                    )}
                   </CardContent>
                 </Card>
               ))}

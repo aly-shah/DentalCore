@@ -41,7 +41,7 @@ export async function GET(request: Request) {
         .update({ where: { id: tok.id }, data: { lastUsedAt: new Date() } })
         .catch(() => {});
 
-      const [patient, appointments, invoices, prescriptions, followUps] = await Promise.all([
+      const [patient, appointments, invoices, prescriptions, followUps, documents, treatmentPlans] = await Promise.all([
         prisma.patient.findUnique({
           where: { id: tok.patientId },
           select: {
@@ -83,10 +83,26 @@ export async function GET(request: Request) {
           take: 8,
           select: { id: true, reason: true, dueDate: true, status: true },
         }),
+        prisma.patientDocument.findMany({
+          where: { patientId: tok.patientId },
+          orderBy: { createdAt: "desc" },
+          take: 20,
+          select: { id: true, name: true, type: true, fileUrl: true, createdAt: true },
+        }),
+        prisma.treatmentPlan.findMany({
+          where: { patientId: tok.patientId },
+          orderBy: { createdAt: "desc" },
+          take: 6,
+          select: {
+            id: true, title: true, status: true, totalCost: true,
+            estimatedPatientPortion: true, createdAt: true,
+            items: { select: { description: true, total: true, status: true } },
+          },
+        }),
       ]);
 
       if (!patient) return null;
-      return { patient, appointments, invoices, prescriptions, followUps };
+      return { patient, appointments, invoices, prescriptions, followUps, documents, treatmentPlans };
     });
 
     if (!data) {
