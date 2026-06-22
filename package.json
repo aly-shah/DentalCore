@@ -19,7 +19,7 @@
     "desktop:pgdata": "node scripts/build-pgdata.mjs",
     "desktop:assemble": "node scripts/assemble-standalone.mjs",
     "desktop:dev": "electron desktop/main.js",
-    "desktop:dist": "electron-builder --config electron-builder.yml --win"
+    "desktop:dist": "electron-builder --config electron-builder.yml --win --publish never"
   },
   "main": "desktop/main.js",
   "dependencies": {
