@@ -67,3 +67,7 @@ next-env.d.ts
 
 # Built Android packages — artifacts, not source
 *.apk
+
+# Desktop (Electron) build artifacts — generated, never committed
+/dist
+/desktop/resources/

@@ -15,8 +15,13 @@
     "db:reset": "prisma migrate reset --skip-seed && tsx prisma/seed.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "desktop:pgdata": "node scripts/build-pgdata.mjs",
+    "desktop:assemble": "node scripts/assemble-standalone.mjs",
+    "desktop:dev": "electron desktop/main.js",
+    "desktop:dist": "electron-builder --config electron-builder.yml --win"
   },
+  "main": "desktop/main.js",
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "@sentry/nextjs": "^10.53.0",
@@ -25,6 +30,7 @@
     "@whiskeysockets/baileys": "^6.7.21",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
+    "embedded-postgres": "18.4.0-beta.17",
     "ioredis": "^5.10.1",
     "jose": "^5.9.0",
     "lucide-react": "^0.454.0",
@@ -50,6 +56,8 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitest/coverage-v8": "^4.1.6",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
     "prisma": "^5.22.0",
     "tailwindcss": "^4.0.0-alpha.33",
     "tsx": "^4.19.2",

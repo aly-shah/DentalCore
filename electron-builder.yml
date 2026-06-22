@@ -1,0 +1,39 @@
+appId: com.dentacore.desktop
+productName: DentaCore
+copyright: DentaCore
+
+# Only the Electron glue lives in the app bundle; the heavy pieces (the Next
+# standalone server and the seeded Postgres data dir) ship as extraResources.
+files:
+  - desktop/**/*
+  - "!desktop/resources/**"
+  - package.json
+
+# Postgres native binaries (and embedded-postgres) must stay outside the asar
+# archive so they can be executed/spawned at runtime.
+asarUnpack:
+  - "**/node_modules/@embedded-postgres/**"
+  - "**/node_modules/embedded-postgres/**"
+
+extraResources:
+  - from: .next/standalone
+    to: standalone
+  - from: desktop/resources/pgdata
+    to: pgdata
+
+directories:
+  output: dist
+  buildResources: desktop/build
+
+win:
+  target:
+    - nsis
+  artifactName: DentaCore-Setup-${version}.${ext}
+
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DentaCore
