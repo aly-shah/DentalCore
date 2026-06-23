@@ -2,6 +2,8 @@
   "name": "dentacore",
   "version": "0.1.0",
   "private": true,
+  "description": "DentaCore — offline dental clinic management (demo build)",
+  "author": "DentaCore <noreply@dentacore.local>",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -19,7 +21,8 @@
     "desktop:pgdata": "node scripts/build-pgdata.mjs",
     "desktop:assemble": "node scripts/assemble-standalone.mjs",
     "desktop:dev": "electron desktop/main.js",
-    "desktop:dist": "electron-builder --config electron-builder.yml --win --publish never"
+    "desktop:dist": "electron-builder --config electron-builder.yml --win --publish never",
+    "desktop:dist:linux": "electron-builder --config electron-builder.yml --linux --publish never"
   },
   "main": "desktop/main.js",
   "dependencies": {

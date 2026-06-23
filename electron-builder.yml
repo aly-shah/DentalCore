@@ -30,6 +30,15 @@ win:
     - nsis
   artifactName: DentaCore-Setup-${version}.${ext}
 
+linux:
+  target:
+    - deb
+    - AppImage
+  category: Office
+  synopsis: Offline dental clinic management (demo)
+  description: DentaCore runs entirely offline with demo data. No server or internet required.
+  artifactName: DentaCore-${version}-${arch}.${ext}
+
 nsis:
   oneClick: false
   perMachine: false

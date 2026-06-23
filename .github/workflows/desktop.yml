@@ -71,9 +71,68 @@ jobs:
           tag_name: desktop-latest
           name: DentaCore Desktop (latest)
           body: |
-            Offline Windows desktop build of DentaCore with demo/mock data.
+            Offline desktop build of DentaCore with demo/mock data. Fully offline.
+            Demo login: `admin@dentacore.com` / `password`.
 
-            **Download:** `DentaCore-Setup-*.exe` below, then double-click to install.
-            Works fully offline. Demo login: `admin@dentacore.com` / `password`.
+            - **Windows:** `DentaCore-Setup-*.exe` — double-click to install.
+            - **Ubuntu/Linux (x86_64):** `DentaCore-*-amd64.deb` — `sudo apt install ./DentaCore-*-amd64.deb` (recommended), or `DentaCore-*-x86_64.AppImage` (portable).
           files: dist/*.exe
+          fail_on_unmatched_files: true
+
+  build-linux:
+    name: Build installer on Linux (x86_64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    env:
+      DATABASE_URL: postgresql://postgres:ci@localhost:5432/dentacore_ci
+      AUTH_SECRET: ci-not-a-real-secret-ci-not-a-real-secret-0123
+      NEXT_TELEMETRY_DISABLED: "1"
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Build Next.js (standalone, offline)
+        env:
+          BUILD_STANDALONE: "1"
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: npm run build
+
+      - name: Assemble standalone bundle
+        run: npm run desktop:assemble
+
+      - name: Build seeded Postgres template (schema + mock data)
+        run: npm run desktop:pgdata
+
+      - name: Package Linux installers (.deb + AppImage)
+        run: npm run desktop:dist:linux
+
+      - name: Upload installers as build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DentaCore-Linux-Installers
+          path: |
+            dist/*.deb
+            dist/*.AppImage
+          if-no-files-found: error
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: desktop-latest
+          name: DentaCore Desktop (latest)
+          files: |
+            dist/*.deb
+            dist/*.AppImage
           fail_on_unmatched_files: true
