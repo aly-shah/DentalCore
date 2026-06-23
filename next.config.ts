@@ -5,6 +5,10 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   eslint: { ignoreDuringBuilds: true },
   typescript: { ignoreBuildErrors: true },
+  // The desktop (Electron) build sets BUILD_STANDALONE=1 so Next emits a
+  // self-contained server in .next/standalone that Electron can launch
+  // offline. The VPS deploy leaves this unset and builds normally.
+  ...(process.env.BUILD_STANDALONE ? { output: "standalone" as const } : {}),
 };
 
 // Wrap with Sentry. The plugin auto-injects the error handler, source-map

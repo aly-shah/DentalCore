@@ -4,6 +4,10 @@
 
 generator client {
   provider = "prisma-client-js"
+  // "windows" is added so the desktop (Electron) build can ship a Prisma
+  // query engine that runs on Windows. The VPS uses "native" (linux); the
+  // extra engine is unused there and harmless.
+  binaryTargets = ["native", "windows"]
 }
 
 datasource db {

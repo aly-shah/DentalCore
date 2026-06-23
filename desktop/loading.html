@@ -1,0 +1,37 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      html, body {
+        margin: 0; height: 100%;
+        font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+        background: #0f172a; color: #e2e8f0;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .box { text-align: center; padding: 24px; }
+      .logo { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; color: #38bdf8; }
+      .logo span { color: #e2e8f0; }
+      .status { margin-top: 18px; font-size: 13px; color: #94a3b8; min-height: 18px; }
+      .bar { margin: 20px auto 0; width: 220px; height: 4px; border-radius: 4px; background: #1e293b; overflow: hidden; }
+      .bar::after {
+        content: ""; display: block; height: 100%; width: 40%;
+        background: #38bdf8; border-radius: 4px;
+        animation: slide 1.2s ease-in-out infinite;
+      }
+      @keyframes slide { 0% { transform: translateX(-60px); } 100% { transform: translateX(220px); } }
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <div class="logo">Denta<span>Core</span></div>
+      <div class="bar"></div>
+      <div class="status" id="status">Starting…</div>
+    </div>
+    <script>
+      window.setStatus = (msg) => {
+        document.getElementById("status").textContent = msg;
+      };
+    </script>
+  </body>
+</html>
