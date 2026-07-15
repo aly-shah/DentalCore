@@ -553,6 +553,13 @@ export function useUpdateRoom() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rooms.all }),
   });
 }
+export function useDeleteRoom() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.rooms.remove(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.rooms.all }),
+  });
+}
 
 // ---- Lab Tests ----
 
@@ -623,6 +630,20 @@ export function useCreateUser() {
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.users() }),
   });
 }
+export function useUpdateUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.admin.updateUser(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.users() }),
+  });
+}
+export function useDeleteUser() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.deleteUser(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.users() }),
+  });
+}
 
 export function useBranches() {
   return useQuery({
@@ -635,6 +656,20 @@ export function useCreateBranch() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (data: Record<string, unknown>) => api.admin.createBranch(data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.branches() }),
+  });
+}
+export function useUpdateBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) => api.admin.updateBranch(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.branches() }),
+  });
+}
+export function useDeleteBranch() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => api.admin.deleteBranch(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: queryKeys.admin.branches() }),
   });
 }

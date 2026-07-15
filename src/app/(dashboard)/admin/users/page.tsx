@@ -10,6 +10,7 @@ import {
   MapPin,
   Clock,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import {
   Button,
@@ -22,7 +23,8 @@ import {
   Select,
 } from "@/components/ui";
 import { SlidePanel } from "@/components/ui/slide-panel";
-import { useStaff, useCreateUser, useBranches } from "@/hooks/use-queries";
+import { useStaff, useCreateUser, useDeleteUser, useBranches } from "@/hooks/use-queries";
+import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@/types";
 import type { User, Branch } from "@/types";
 import { timeAgo } from "@/lib/utils";
@@ -67,8 +69,24 @@ export default function TeamPage() {
   const { data: staffResponse, isLoading } = useStaff();
   const { data: branchesResponse } = useBranches();
   const createUser = useCreateUser();
+  const deleteUser = useDeleteUser();
+  const { user: currentUser } = useAuth();
   const users = (staffResponse?.data || []) as User[];
   const branches = (branchesResponse?.data || []) as Branch[];
+
+  function handleDelete(user: User) {
+    const ok = window.confirm(
+      `Remove ${user.name}?\n\nIf they have appointments, notes or invoices they'll be deactivated (hidden but history kept). Otherwise they'll be permanently deleted.`
+    );
+    if (!ok) return;
+    deleteUser.mutate(user.id, {
+      onSuccess: (res) => {
+        const action = (res as { action?: string })?.action;
+        window.alert(action === "deactivated" ? `${user.name} was deactivated (linked records kept).` : `${user.name} was deleted.`);
+      },
+      onError: () => window.alert(`Could not remove ${user.name}. Please try again.`),
+    });
+  }
 
   function setField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -182,6 +200,16 @@ export default function TeamPage() {
                   <Clock className="w-3.5 h-3.5" />
                   <span>{user.lastLogin ? timeAgo(user.lastLogin) : "Never logged in"}</span>
                 </div>
+                {currentUser?.id !== user.id && (
+                  <button
+                    onClick={() => handleDelete(user)}
+                    disabled={deleteUser.isPending}
+                    className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                    aria-label={`Remove ${user.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                  </button>
+                )}
               </div>
             </div>
           </Card>

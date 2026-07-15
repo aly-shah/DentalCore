@@ -10,6 +10,7 @@ import {
   Users,
   Mail,
   Loader2,
+  Trash2,
 } from "lucide-react";
 import {
   Button,
@@ -19,7 +20,7 @@ import {
   Input,
 } from "@/components/ui";
 import { SlidePanel } from "@/components/ui/slide-panel";
-import { useBranches, useStaff, useCreateBranch } from "@/hooks/use-queries";
+import { useBranches, useStaff, useCreateBranch, useDeleteBranch } from "@/hooks/use-queries";
 import type { Branch, User } from "@/types";
 
 const emptyBranchForm = { name: "", code: "", address: "", phone: "", email: "" };
@@ -32,9 +33,24 @@ export default function BranchesPage() {
   const { data: branchesResponse, isLoading: branchesLoading } = useBranches();
   const { data: staffResponse, isLoading: staffLoading } = useStaff();
   const createBranch = useCreateBranch();
+  const deleteBranch = useDeleteBranch();
   const branches = (branchesResponse?.data || []) as Branch[];
   const users = (staffResponse?.data || []) as User[];
   const isLoading = branchesLoading || staffLoading;
+
+  function handleDelete(branch: Branch) {
+    const ok = window.confirm(
+      `Remove ${branch.name}?\n\nIf it has staff, patients, appointments or invoices it'll be deactivated (hidden but data kept). Otherwise it'll be permanently deleted.`
+    );
+    if (!ok) return;
+    deleteBranch.mutate(branch.id, {
+      onSuccess: (res) => {
+        const action = (res as { action?: string })?.action;
+        window.alert(action === "deactivated" ? `${branch.name} was deactivated (linked data kept).` : `${branch.name} was deleted.`);
+      },
+      onError: () => window.alert(`Could not remove ${branch.name}. Please try again.`),
+    });
+  }
 
   function setField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -142,6 +158,15 @@ export default function BranchesPage() {
                     <span>{staffCount} staff member{staffCount !== 1 ? "s" : ""}</span>
                   </div>
                 </div>
+
+                <button
+                  onClick={() => handleDelete(branch)}
+                  disabled={deleteBranch.isPending}
+                  className="mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                  aria-label={`Remove ${branch.name}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Remove branch
+                </button>
               </div>
             </Card>
           );

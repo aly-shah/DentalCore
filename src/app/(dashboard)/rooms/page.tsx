@@ -8,6 +8,7 @@ import {
   Clock,
   Wrench,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import {
   Card,
@@ -18,7 +19,8 @@ import {
 import { RoomStatus, RoomType } from "@/types";
 import { formatTime } from "@/lib/utils";
 import { useModuleAccess } from "@/modules/core/hooks";
-import { useRooms, useBranches } from "@/hooks/use-queries";
+import { useRooms, useBranches, useDeleteRoom } from "@/hooks/use-queries";
+import { useAuth } from "@/lib/auth-context";
 import { LoadingSpinner } from "@/components/ui/loading";
 
 const statusConfig: Record<string, { label: string; dotColor: string; bgColor: string; variant: "success" | "danger" | "warning" | "default" }> = {
@@ -44,6 +46,21 @@ export default function RoomsPage() {
 
   const { data: branchesResponse, isLoading: isLoadingBranches } = useBranches();
   const branches = (branchesResponse?.data || []) as Array<{ id: string; name: string; isActive: boolean }>;
+
+  const { user } = useAuth();
+  const canManage = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+  const deleteRoom = useDeleteRoom();
+
+  function handleDeleteRoom(room: { id: string; name: string; status: string }) {
+    if (room.status === RoomStatus.OCCUPIED) {
+      window.alert(`${room.name} is currently occupied. Free it before deleting.`);
+      return;
+    }
+    if (!window.confirm(`Delete ${room.name}? This permanently removes the room. Appointments keep their history but lose the room link.`)) return;
+    deleteRoom.mutate(room.id, {
+      onError: () => window.alert(`Could not delete ${room.name}. Please try again.`),
+    });
+  }
 
   const filteredRooms = activeBranch === "all"
     ? rooms
@@ -191,6 +208,17 @@ export default function RoomsPage() {
                 <div className="text-[11px] sm:text-xs text-stone-400">
                   Capacity: {room.capacity} {room.capacity === 1 ? "person" : "people"}
                 </div>
+
+                {canManage && (
+                  <button
+                    onClick={() => handleDeleteRoom(room)}
+                    disabled={deleteRoom.isPending}
+                    className="mt-0.5 flex items-center justify-center gap-1.5 text-[11px] sm:text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                    aria-label={`Delete ${room.name}`}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete
+                  </button>
+                )}
               </div>
             </Card>
           );

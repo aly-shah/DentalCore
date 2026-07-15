@@ -138,6 +138,7 @@ export const api = {
       return apiFetch<unknown[]>(`/api/rooms${qs}`);
     },
     update: (id: string, data: Record<string, unknown>) => apiFetch<unknown>(`/api/rooms/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    remove: (id: string) => apiFetch<unknown>(`/api/rooms/${id}`, { method: "DELETE" }),
   },
 
   // Lab Tests
@@ -168,8 +169,12 @@ export const api = {
   admin: {
     users: () => apiFetch<unknown[]>("/api/admin/users"),
     createUser: (data: Record<string, unknown>) => apiFetch<unknown>("/api/admin/users", { method: "POST", body: JSON.stringify(data) }),
+    updateUser: (id: string, data: Record<string, unknown>) => apiFetch<unknown>(`/api/admin/users/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    deleteUser: (id: string) => apiFetch<{ action?: string; linkedRecords?: number }>(`/api/admin/users/${id}`, { method: "DELETE" }),
     branches: () => apiFetch<unknown[]>("/api/admin/branches"),
     createBranch: (data: Record<string, unknown>) => apiFetch<unknown>("/api/admin/branches", { method: "POST", body: JSON.stringify(data) }),
+    updateBranch: (id: string, data: Record<string, unknown>) => apiFetch<unknown>(`/api/admin/branches/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    deleteBranch: (id: string) => apiFetch<{ action?: string; linkedRecords?: number }>(`/api/admin/branches/${id}`, { method: "DELETE" }),
     auditLog: (params?: Record<string, string>) => {
       const qs = buildQuery(params);
       return apiFetch<unknown[]>(`/api/admin/audit-log${qs}`);

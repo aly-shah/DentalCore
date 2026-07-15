@@ -92,3 +92,33 @@ export async function PUT(
     );
   }
 }
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await requireAuth({ minRole: "ADMIN" });
+    if (auth.response) return auth.response;
+
+    const { id } = await params;
+    const existing = await prisma.room.findUnique({ where: { id } });
+    if (!existing) {
+      return NextResponse.json({ success: false, error: "Room not found" }, { status: 404 });
+    }
+
+    // Appointment.roomId / BlockedSlot.roomId are nullable, so detach any
+    // references first, then hard-delete the room.
+    await prisma.appointment.updateMany({ where: { roomId: id }, data: { roomId: null } });
+    await prisma.blockedSlot.updateMany({ where: { roomId: id }, data: { roomId: null } }).catch(() => {});
+    await prisma.room.delete({ where: { id } });
+
+    return NextResponse.json({ success: true, action: "deleted", data: { id } });
+  } catch (error) {
+    logger.api("DELETE", "/api/rooms/[id]", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to delete room" },
+      { status: 500 }
+    );
+  }
+}

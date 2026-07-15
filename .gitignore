@@ -67,3 +67,7 @@ next-env.d.ts
 
 # Built Android packages — artifacts, not source
 *.apk
+
+# Desktop build (bundled Postgres data dir) and web build output — artifacts, not source
+/desktop/
+/dist/
