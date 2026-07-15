@@ -100,6 +100,9 @@ jobs:
           npx tsx prisma/backfill-tenant.ts || echo "(tenant backfill skipped — non-fatal)"
           npx tsx prisma/backfill-voice-note-notifications.ts || echo "(vn-notif backfill skipped — non-fatal)"
 
+          echo ">>> seed/refresh one login per role (idempotent)"
+          npx tsx prisma/seed-role-users.ts || echo "(role-user seed skipped — non-fatal)"
+
           echo ">>> pm2 reload (zero-downtime)"
           pm2 reload dentacore --update-env
           pm2 save
