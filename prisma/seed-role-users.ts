@@ -8,6 +8,10 @@
  *
  * All accounts share the password:  password123
  */
+// Load DATABASE_URL from the app's .env — `tsx` (unlike the Prisma CLI) does
+// not auto-load it, so a bare `npx tsx` run on the VPS would otherwise have no
+// connection string. Does not override an already-set env var.
+import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
