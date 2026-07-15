@@ -58,7 +58,7 @@ const roleOptions = [
   { value: UserRole.ASSISTANT, label: "Assistant" },
 ];
 
-const emptyForm = { name: "", email: "", password: "", role: "", phone: "", branchId: "" };
+const emptyForm = { name: "", email: "", password: "", role: "", phone: "", branchId: "", consultationFee: "" };
 
 export default function TeamPage() {
   const access = useModuleAccess("MOD-STAFF");
@@ -200,6 +200,12 @@ export default function TeamPage() {
                   <Clock className="w-3.5 h-3.5" />
                   <span>{user.lastLogin ? timeAgo(user.lastLogin) : "Never logged in"}</span>
                 </div>
+                {user.role === UserRole.DOCTOR && (user.consultationFee ?? 0) > 0 && (
+                  <div className="flex items-center justify-center gap-1.5 text-xs text-stone-400">
+                    <Stethoscope className="w-3.5 h-3.5" />
+                    <span>Consultation fee: {user.consultationFee}</span>
+                  </div>
+                )}
                 {currentUser?.id !== user.id && (
                   <button
                     onClick={() => handleDelete(user)}
@@ -258,6 +264,17 @@ export default function TeamPage() {
             value={form.branchId}
             onChange={(e) => setField("branchId", e.target.value)}
           />
+          {form.role === UserRole.DOCTOR && (
+            <Input
+              label="Consultation Fee"
+              type="number"
+              min={0}
+              placeholder="e.g. 100"
+              value={form.consultationFee}
+              onChange={(e) => setField("consultationFee", e.target.value)}
+              helperText="Auto-added to the invoice when a patient checks in for this doctor."
+            />
+          )}
         </div>
       </SlidePanel>
     </div>

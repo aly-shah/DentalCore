@@ -21,6 +21,7 @@ export const createUserSchema = z.object({
   branchId: z.string().min(1),
   speciality: z.string().max(200).optional().nullable(),
   licenseNumber: z.string().max(100).optional().nullable(),
+  consultationFee: z.coerce.number().min(0).max(1000000).optional(),
 });
 
 export const createAppointmentSchema = z.object({

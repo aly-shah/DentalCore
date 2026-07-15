@@ -162,6 +162,9 @@ export interface User {
   role: UserRole;
   branchId: string;
   branchName?: string;
+  speciality?: string;
+  licenseNumber?: string;
+  consultationFee?: number;
   isActive: boolean;
   lastLogin?: string;
   createdAt: string;

@@ -38,7 +38,7 @@ export async function GET(request: Request) {
         id: true, email: true, name: true, phone: true, avatar: true,
         role: true, branchId: true,
         branch: { select: { id: true, name: true, code: true } },
-        speciality: true, licenseNumber: true, isActive: true,
+        speciality: true, licenseNumber: true, consultationFee: true, isActive: true,
         lastLoginAt: true, createdAt: true, updatedAt: true,
       },
       orderBy: { name: "asc" },
@@ -80,13 +80,14 @@ export async function POST(request: Request) {
         branchId: v.data.branchId,
         speciality: v.data.speciality || null,
         licenseNumber: v.data.licenseNumber || null,
+        consultationFee: v.data.consultationFee ?? 0,
         isActive: true,
       },
       select: {
         id: true, email: true, name: true, phone: true, avatar: true,
         role: true, branchId: true,
         branch: { select: { id: true, name: true, code: true } },
-        speciality: true, licenseNumber: true, isActive: true, createdAt: true,
+        speciality: true, licenseNumber: true, consultationFee: true, isActive: true, createdAt: true,
       },
     });
 

@@ -11,7 +11,7 @@ import { logAudit } from "@/lib/audit";
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
 
-const EDITABLE_FIELDS = ["name", "phone", "avatar", "role", "branchId", "speciality", "licenseNumber", "isActive"] as const;
+const EDITABLE_FIELDS = ["name", "phone", "avatar", "role", "branchId", "speciality", "licenseNumber", "consultationFee", "isActive"] as const;
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -26,6 +26,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const data: any = {};
     for (const f of EDITABLE_FIELDS) if (body[f] !== undefined) data[f] = body[f];
+    if (data.consultationFee !== undefined) data.consultationFee = Number(data.consultationFee) || 0;
 
     const user = await prisma.user.update({
       where: { id },
@@ -34,7 +35,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         id: true, email: true, name: true, phone: true, avatar: true,
         role: true, branchId: true,
         branch: { select: { id: true, name: true, code: true } },
-        speciality: true, licenseNumber: true, isActive: true, createdAt: true, updatedAt: true,
+        speciality: true, licenseNumber: true, consultationFee: true, isActive: true, createdAt: true, updatedAt: true,
       },
     });
 
