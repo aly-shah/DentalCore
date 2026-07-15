@@ -65,7 +65,7 @@ export default function LoginPage() {
             <span className="text-2xl font-bold tracking-tight text-blue-700">DentaCore</span>
           </div>
 
-          <h2 className="text-2xl font-bold text-stone-900 mb-1">Welcome back</h2>
+          <h2 className="text-2xl font-bold text-stone-900 mb-1">Welcome</h2>
           <p className="text-stone-500 mb-8">Sign in to your clinic workspace</p>
 
           {error && (
