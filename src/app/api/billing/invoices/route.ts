@@ -24,7 +24,13 @@ export async function GET(request: Request) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const where: any = {};
 
-    if (status) where.status = status;
+    if (status) {
+      // Accept a single status or a comma-separated list (e.g.
+      // "PENDING,PARTIAL,OVERDUE"). A bare comma-joined string is an invalid
+      // enum value and makes Prisma throw, so split it into an `in` filter.
+      const statuses = status.split(",").map((s) => s.trim()).filter(Boolean);
+      where.status = statuses.length > 1 ? { in: statuses } : statuses[0];
+    }
     if (patientId) where.patientId = patientId;
     if (branchId) where.branchId = branchId;
     if (from || to) {
