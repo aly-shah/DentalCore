@@ -19,15 +19,17 @@ const prisma = new PrismaClient();
 
 const PASSWORD = "password123";
 
-// Simple ids + emails, one per role.
+// Simple emails, one per role. Ids are DB-generated (cuid) — the email is the
+// login identity and the upsert key, so no fixed ids that could collide with
+// existing rows.
 const ROLE_USERS = [
-  { id: "u-super",      email: "super@clinic.com",      role: "SUPER_ADMIN",  name: "Super Admin" },
-  { id: "u-admin",      email: "admin@clinic.com",      role: "ADMIN",        name: "Admin User" },
-  { id: "u-doctor",     email: "doctor@clinic.com",     role: "DOCTOR",       name: "Doctor User" },
-  { id: "u-reception",  email: "reception@clinic.com",  role: "RECEPTIONIST", name: "Reception User" },
-  { id: "u-billing",    email: "billing@clinic.com",    role: "BILLING",      name: "Billing User" },
-  { id: "u-callcenter", email: "callcenter@clinic.com", role: "CALL_CENTER",  name: "Call Center User" },
-  { id: "u-assistant",  email: "assistant@clinic.com",  role: "ASSISTANT",    name: "Assistant User" },
+  { email: "super@clinic.com",      role: "SUPER_ADMIN",  name: "Super Admin" },
+  { email: "admin@clinic.com",      role: "ADMIN",        name: "Admin User" },
+  { email: "doctor@clinic.com",     role: "DOCTOR",       name: "Doctor User" },
+  { email: "reception@clinic.com",  role: "RECEPTIONIST", name: "Reception User" },
+  { email: "billing@clinic.com",    role: "BILLING",      name: "Billing User" },
+  { email: "callcenter@clinic.com", role: "CALL_CENTER",  name: "Call Center User" },
+  { email: "assistant@clinic.com",  role: "ASSISTANT",    name: "Assistant User" },
 ];
 
 async function main() {
@@ -47,25 +49,31 @@ async function main() {
 
   const passwordHash = await bcrypt.hash(PASSWORD, 10);
 
+  let ok = 0;
   for (const u of ROLE_USERS) {
-    await prisma.user.upsert({
-      where: { email: u.email },
-      update: { passwordHash, isActive: true, role: u.role, name: u.name },
-      create: {
-        id: u.id,
-        email: u.email,
-        name: u.name,
-        role: u.role,
-        passwordHash,
-        isActive: true,
-        branchId: branch.id,
-        tenantId: branch.tenantId ?? undefined,
-      },
-    });
-    console.log(`   ✓ ${u.email}  (${u.role})`);
+    // Isolate each account so one failure never aborts the rest.
+    try {
+      await prisma.user.upsert({
+        where: { email: u.email },
+        update: { passwordHash, isActive: true, role: u.role, name: u.name },
+        create: {
+          email: u.email,
+          name: u.name,
+          role: u.role,
+          passwordHash,
+          isActive: true,
+          branchId: branch.id,
+          tenantId: branch.tenantId ?? undefined,
+        },
+      });
+      ok++;
+      console.log(`   ✓ ${u.email}  (${u.role})`);
+    } catch (e) {
+      console.error(`   ✗ ${u.email} — ${(e as Error).message.split("\n")[0]}`);
+    }
   }
 
-  console.log(`\nDone. All ${ROLE_USERS.length} accounts use password: "${PASSWORD}"`);
+  console.log(`\nDone. ${ok}/${ROLE_USERS.length} accounts ready — password: "${PASSWORD}"`);
 }
 
 main()
