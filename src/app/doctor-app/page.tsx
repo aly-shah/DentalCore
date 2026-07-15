@@ -27,6 +27,7 @@ import {
   usePatientSummary,
 } from "./patient-summary-view";
 import { DEMO_USER, DEMO_APPTS, DEMO_PATIENTS, demoSummary } from "./demo-data";
+import { NotificationPrompt } from "./notification-permission";
 
 /* ───────── helpers ───────── */
 type Apt = Record<string, unknown>;
@@ -336,6 +337,11 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { id?: string; name
           <PatientSummaryView patientId={activePatientId} onBack={closePatient} demo={demo} />
         ) : (
           <>
+            {!demo && (
+              <div className="px-3 sm:px-4">
+                <NotificationPrompt />
+              </div>
+            )}
             {view === "today" && (
               <TodayView
                 upcoming={upcomingList}
