@@ -47,6 +47,15 @@ function aptPatientId(a: Apt): string | null {
   const p = a.patient as Record<string, unknown> | undefined;
   return p && typeof p.id === "string" ? p.id : null;
 }
+function aptDoctorId(a: Apt): string | null {
+  if (typeof a.doctorId === "string" && a.doctorId) return a.doctorId;
+  const d = a.doctor as Record<string, unknown> | undefined;
+  return d && typeof d.id === "string" ? d.id : null;
+}
+function aptDoctorName(a: Apt): string {
+  const d = a.doctor as Record<string, unknown> | undefined;
+  return d && typeof d.name === "string" ? d.name : "";
+}
 const up = (s: unknown) => String(s || "").toUpperCase();
 const DONE = ["COMPLETED"];
 const CANCELLED = ["CANCELLED", "NO_SHOW"];
@@ -229,7 +238,7 @@ function NotClinicalStaff({
 }
 
 /* ───────── the app ───────── */
-function DoctorApp({ user, onLogout, demo = false }: { user: { name: string; role?: string }; onLogout: () => Promise<void>; demo?: boolean }) {
+function DoctorApp({ user, onLogout, demo = false }: { user: { id?: string; name: string; role?: string }; onLogout: () => Promise<void>; demo?: boolean }) {
   const [view, setView] = useState<"today" | "schedule" | "patients">("today");
   const [activePatientId, setActivePatientId] = useState<string | null>(null);
   const today = getClinicToday();
@@ -263,14 +272,24 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { name: string; rol
   const isWait = (a: Apt) => WAITING.includes(up(a.status));
   const isAct = (a: Apt) => ACTIVE.includes(up(a.status));
 
+  // A doctor's own appointments are their "main" list; other doctors'
+  // patients are shown as a secondary "also in clinic" list so they're
+  // visible but not owned. Assistants/admins (and demo) see the whole
+  // clinic with no split.
+  const isDoctorView = !demo && user.role === "DOCTOR" && !!user.id;
+  const isMine = (a: Apt) => aptDoctorId(a) === user.id;
+  const primaryAppts = isDoctorView ? appts.filter(isMine) : appts;
+  const otherAppts = isDoctorView ? appts.filter((a) => !isMine(a)) : [];
+
   const counts = {
-    waiting: appts.filter(isWait).length,
-    active: appts.filter(isAct).length,
-    upcoming: appts.filter((a) => !isDone(a) && !isCx(a) && !isAct(a) && !isWait(a)).length,
-    done: appts.filter(isDone).length,
+    waiting: primaryAppts.filter(isWait).length,
+    active: primaryAppts.filter(isAct).length,
+    upcoming: primaryAppts.filter((a) => !isDone(a) && !isCx(a) && !isAct(a) && !isWait(a)).length,
+    done: primaryAppts.filter(isDone).length,
   };
-  const upcomingList = appts.filter((a) => !isDone(a) && !isCx(a));
-  const completedList = appts.filter(isDone);
+  const upcomingList = primaryAppts.filter((a) => !isDone(a) && !isCx(a));
+  const completedList = primaryAppts.filter(isDone);
+  const otherUpcoming = otherAppts.filter((a) => !isDone(a) && !isCx(a));
 
   return (
     <div className="fixed inset-0 flex flex-col bg-stone-50">
@@ -318,10 +337,21 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { name: string; rol
         ) : (
           <>
             {view === "today" && (
-              <TodayView upcoming={upcomingList} completed={completedList} onSearch={() => setView("patients")} onOpenPatient={openPatient} />
+              <TodayView
+                upcoming={upcomingList}
+                completed={completedList}
+                other={otherUpcoming}
+                isDoctorView={isDoctorView}
+                onSearch={() => setView("patients")}
+                onOpenPatient={openPatient}
+              />
             )}
-            {view === "schedule" && <ScheduleView appts={appts} onOpenPatient={openPatient} />}
-            {view === "patients" && <PatientsView onOpenPatient={openPatient} demo={demo} />}
+            {view === "schedule" && (
+              <ScheduleView appts={primaryAppts} other={otherAppts} isDoctorView={isDoctorView} onOpenPatient={openPatient} />
+            )}
+            {view === "patients" && (
+              <PatientsView onOpenPatient={openPatient} demo={demo} userId={user.id} isDoctorView={isDoctorView} />
+            )}
           </>
         )}
       </div>
@@ -387,11 +417,12 @@ function Empty({ children }: { children: ReactNode }) {
   return <div className="px-4 py-6 text-center text-xs text-stone-400">{children}</div>;
 }
 
-function ApptRow({ a, done, onOpenPatient }: { a: Apt; done: boolean; onOpenPatient?: (pid: string) => void }) {
+function ApptRow({ a, done, onOpenPatient, showDoctor = false }: { a: Apt; done: boolean; onOpenPatient?: (pid: string) => void; showDoctor?: boolean }) {
   const pid = aptPatientId(a);
   const name = aptPatientName(a);
   const code = aptPatientCode(a);
   const type = String(a.type || "").replace(/_/g, " ");
+  const doctor = showDoctor ? aptDoctorName(a) : "";
   const inner = (
     <>
       <div className="shrink-0 text-center w-12">
@@ -402,6 +433,7 @@ function ApptRow({ a, done, onOpenPatient }: { a: Apt; done: boolean; onOpenPati
         <p className={`text-sm font-semibold truncate ${done ? "text-stone-500" : "text-stone-900"}`}>{name}</p>
         {!done && (
           <p className="text-[10px] text-stone-400 uppercase tracking-wide truncate">
+            {doctor ? `${doctor} · ` : ""}
             {type || "Appointment"}
             {code ? ` · ${code}` : ""}
           </p>
@@ -427,11 +459,15 @@ function ApptRow({ a, done, onOpenPatient }: { a: Apt; done: boolean; onOpenPati
 function TodayView({
   upcoming,
   completed,
+  other,
+  isDoctorView,
   onSearch,
   onOpenPatient,
 }: {
   upcoming: Apt[];
   completed: Apt[];
+  other: Apt[];
+  isDoctorView: boolean;
   onSearch: () => void;
   onOpenPatient: (pid: string) => void;
 }) {
@@ -443,81 +479,122 @@ function TodayView({
       >
         <Search className="w-4 h-4" /> Search any patient by name or code…
       </button>
-      <Section title="UPCOMING" count={upcoming.length} icon={<Clock className="w-3.5 h-3.5" />}>
+      <Section title={isDoctorView ? "MY UPCOMING" : "UPCOMING"} count={upcoming.length} icon={<Clock className="w-3.5 h-3.5" />}>
         {upcoming.length === 0 ? (
-          <Empty>No upcoming appointments today</Empty>
+          <Empty>{isDoctorView ? "None of your patients are waiting" : "No upcoming appointments today"}</Empty>
         ) : (
           upcoming.map((a) => <ApptRow key={String(a.id)} a={a} done={false} onOpenPatient={onOpenPatient} />)
         )}
       </Section>
-      <Section title="COMPLETED" count={completed.length} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
+      <Section title={isDoctorView ? "MY COMPLETED" : "COMPLETED"} count={completed.length} icon={<CheckCircle2 className="w-3.5 h-3.5" />}>
         {completed.length === 0 ? (
           <Empty>Nothing completed yet</Empty>
         ) : (
           completed.map((a) => <ApptRow key={String(a.id)} a={a} done />)
         )}
       </Section>
+      {isDoctorView && other.length > 0 && (
+        <Section title="ALSO IN CLINIC" count={other.length} icon={<UsersIcon className="w-3.5 h-3.5" />}>
+          {other.map((a) => <ApptRow key={String(a.id)} a={a} done={false} onOpenPatient={onOpenPatient} showDoctor />)}
+        </Section>
+      )}
     </div>
   );
 }
 
-function ScheduleView({ appts, onOpenPatient }: { appts: Apt[]; onOpenPatient: (pid: string) => void }) {
+function ScheduleList({ appts, showDoctor = false, onOpenPatient }: { appts: Apt[]; showDoctor?: boolean; onOpenPatient: (pid: string) => void }) {
+  return (
+    <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
+      {appts.length === 0 ? (
+        <Empty>No appointments</Empty>
+      ) : (
+        appts.map((a) => {
+          const pid = aptPatientId(a);
+          const st = String(a.status || "").replace(/_/g, " ").toLowerCase();
+          const doctor = showDoctor ? aptDoctorName(a) : "";
+          const inner = (
+            <>
+              <div className="shrink-0 text-center w-12">
+                <p className="text-sm font-bold text-stone-800 leading-tight">{String(a.startTime || "—")}</p>
+                {a.endTime ? <p className="text-[10px] text-stone-400 leading-tight">{String(a.endTime)}</p> : null}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-stone-900 truncate">{aptPatientName(a)}</p>
+                <p className="text-[10px] text-stone-400 uppercase truncate">
+                  {doctor ? `${doctor} · ` : ""}
+                  {String(a.type || "Appointment").replace(/_/g, " ")}
+                </p>
+              </div>
+              <span className="text-[10px] font-medium text-stone-500 bg-stone-100 rounded-full px-2 py-0.5 shrink-0 capitalize">
+                {st || "—"}
+              </span>
+            </>
+          );
+          return pid ? (
+            <button key={String(a.id)} onClick={() => onOpenPatient(pid)} className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left">
+              {inner}
+            </button>
+          ) : (
+            <div key={String(a.id)} className="flex items-center gap-3 px-3.5 py-3">
+              {inner}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
+function ScheduleHeader({ icon, children }: { icon: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-1.5 px-1 text-[11px] font-semibold tracking-wider text-stone-400">
+      {icon}
+      {children}
+    </div>
+  );
+}
+
+function ScheduleView({ appts, other, isDoctorView, onOpenPatient }: { appts: Apt[]; other: Apt[]; isDoctorView: boolean; onOpenPatient: (pid: string) => void }) {
   return (
     <div className="px-3 sm:px-4 py-3 space-y-3 max-w-3xl mx-auto w-full">
-      <div className="flex items-center gap-1.5 px-1 text-[11px] font-semibold tracking-wider text-stone-400">
-        <CalendarDays className="w-3.5 h-3.5" />
-        TODAY&apos;S SCHEDULE ({appts.length})
-      </div>
-      <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
-        {appts.length === 0 ? (
-          <Empty>No appointments today</Empty>
-        ) : (
-          appts.map((a) => {
-            const pid = aptPatientId(a);
-            const st = String(a.status || "").replace(/_/g, " ").toLowerCase();
-            const inner = (
-              <>
-                <div className="shrink-0 text-center w-12">
-                  <p className="text-sm font-bold text-stone-800 leading-tight">{String(a.startTime || "—")}</p>
-                  {a.endTime ? <p className="text-[10px] text-stone-400 leading-tight">{String(a.endTime)}</p> : null}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-stone-900 truncate">{aptPatientName(a)}</p>
-                  <p className="text-[10px] text-stone-400 uppercase truncate">
-                    {String(a.type || "Appointment").replace(/_/g, " ")}
-                  </p>
-                </div>
-                <span className="text-[10px] font-medium text-stone-500 bg-stone-100 rounded-full px-2 py-0.5 shrink-0 capitalize">
-                  {st || "—"}
-                </span>
-              </>
-            );
-            return pid ? (
-              <button key={String(a.id)} onClick={() => onOpenPatient(pid)} className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left">
-                {inner}
-              </button>
-            ) : (
-              <div key={String(a.id)} className="flex items-center gap-3 px-3.5 py-3">
-                {inner}
-              </div>
-            );
-          })
-        )}
-      </div>
+      <ScheduleHeader icon={<CalendarDays className="w-3.5 h-3.5" />}>
+        {isDoctorView ? `MY SCHEDULE (${appts.length})` : `TODAY'S SCHEDULE (${appts.length})`}
+      </ScheduleHeader>
+      <ScheduleList appts={appts} onOpenPatient={onOpenPatient} />
+      {isDoctorView && other.length > 0 && (
+        <>
+          <ScheduleHeader icon={<UsersIcon className="w-3.5 h-3.5" />}>OTHER DOCTORS ({other.length})</ScheduleHeader>
+          <ScheduleList appts={other} showDoctor onOpenPatient={onOpenPatient} />
+        </>
+      )}
     </div>
   );
 }
 
-function PatientsView({ onOpenPatient, demo = false }: { onOpenPatient: (pid: string) => void; demo?: boolean }) {
+type PatientRow = {
+  id: string;
+  firstName: string;
+  lastName: string;
+  patientCode: string;
+  phone: string;
+  assignedDoctorId?: string | null;
+};
+
+function PatientsView({ onOpenPatient, demo = false, userId, isDoctorView }: { onOpenPatient: (pid: string) => void; demo?: boolean; userId?: string; isDoctorView: boolean }) {
   const [q, setQ] = useState("");
-  const { data } = usePatients(demo ? undefined : q ? { search: q, limit: "30" } : { limit: "30" }, { enabled: !demo });
-  const fetched = ((data?.data ?? []) as Array<{
-    id: string;
-    firstName: string;
-    lastName: string;
-    patientCode: string;
-    phone: string;
-  }>);
+  // Default view for a doctor is their own assigned patients; searching
+  // widens to every patient in the clinic (their patients are still tagged
+  // "Yours"). Assistants/admins always see the full list.
+  const searching = q.trim().length > 0;
+  const params: Record<string, string> | undefined = demo
+    ? undefined
+    : searching
+      ? { search: q, limit: "30" }
+      : isDoctorView && userId
+        ? { doctorId: userId, limit: "50" }
+        : { limit: "30" };
+  const { data } = usePatients(params, { enabled: !demo });
+  const fetched = (data?.data ?? []) as PatientRow[];
   const patients = demo
     ? DEMO_PATIENTS.filter((p) => {
         const needle = q.trim().toLowerCase();
@@ -529,6 +606,7 @@ function PatientsView({ onOpenPatient, demo = false }: { onOpenPatient: (pid: st
         );
       })
     : fetched;
+  const showMineHeader = isDoctorView && !searching;
   return (
     <div className="px-3 sm:px-4 py-3 space-y-3 max-w-3xl mx-auto w-full">
       <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-white border border-stone-200">
@@ -536,35 +614,49 @@ function PatientsView({ onOpenPatient, demo = false }: { onOpenPatient: (pid: st
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search patients by name, phone or code…"
+          placeholder="Search any patient by name, phone or code…"
           className="flex-1 text-sm focus:outline-none placeholder:text-stone-400 bg-transparent"
         />
       </div>
+      {(showMineHeader || searching) && (
+        <div className="flex items-center gap-1.5 px-1 text-[11px] font-semibold tracking-wider text-stone-400">
+          <UsersIcon className="w-3.5 h-3.5" />
+          {showMineHeader ? `MY PATIENTS (${patients.length})` : `SEARCH RESULTS (${patients.length})`}
+        </div>
+      )}
       <div className="bg-white rounded-xl border border-stone-200 overflow-hidden divide-y divide-stone-100">
         {patients.length === 0 ? (
-          <Empty>No patients found</Empty>
+          <Empty>{showMineHeader ? "No patients assigned to you yet — search to find anyone." : "No patients found"}</Empty>
         ) : (
-          patients.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => onOpenPatient(p.id)}
-              className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left"
-            >
-              <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center text-xs font-semibold shrink-0">
-                {(p.firstName?.[0] || "") + (p.lastName?.[0] || "")}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-stone-900 truncate">
-                  {p.firstName} {p.lastName}
-                </p>
-                <p className="text-[10px] text-stone-400 font-mono">
-                  {p.patientCode}
-                  {p.phone ? ` · ${p.phone}` : ""}
-                </p>
-              </div>
-              <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
-            </button>
-          ))
+          patients.map((p) => {
+            const mine = isDoctorView && !!userId && (p as PatientRow).assignedDoctorId === userId;
+            return (
+              <button
+                key={p.id}
+                onClick={() => onOpenPatient(p.id)}
+                className="flex items-center gap-3 px-3.5 py-3 active:bg-stone-50 w-full text-left"
+              >
+                <div className="w-8 h-8 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center text-xs font-semibold shrink-0">
+                  {(p.firstName?.[0] || "") + (p.lastName?.[0] || "")}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-stone-900 truncate">
+                    {p.firstName} {p.lastName}
+                  </p>
+                  <p className="text-[10px] text-stone-400 font-mono">
+                    {p.patientCode}
+                    {p.phone ? ` · ${p.phone}` : ""}
+                  </p>
+                </div>
+                {mine && searching && (
+                  <span className="text-[9px] font-bold uppercase tracking-wider bg-teal-50 text-teal-700 rounded-full px-1.5 py-0.5 shrink-0">
+                    Yours
+                  </span>
+                )}
+                <ChevronRight className="w-4 h-4 text-stone-300 shrink-0" />
+              </button>
+            );
+          })
         )}
       </div>
     </div>
