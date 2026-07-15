@@ -1,6 +1,8 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useModuleStore } from "@/modules/core/store";
 
 interface User {
   id: string;
@@ -32,6 +34,7 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const refreshUser = useCallback(async () => {
     try {
@@ -90,8 +93,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST" });
+    // Full sign-out. Clear client state first so nothing from this session
+    // lingers for the next person on a shared clinic device, even if the
+    // network logout is slow or the caller redirects immediately.
     setUser(null);
+    try {
+      queryClient.clear();          // drop all cached queries (patient PHI, etc.)
+      useModuleStore.getState().reset(); // wipe in-memory queue/notifications/counters
+    } catch { /* non-fatal */ }
+    try {
+      window.localStorage.clear();
+      window.sessionStorage.clear();
+    } catch { /* storage may be unavailable */ }
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch { /* clear the session cookie best-effort */ }
   };
 
   return (

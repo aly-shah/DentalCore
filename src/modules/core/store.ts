@@ -71,6 +71,9 @@ interface ModuleStoreState {
   setCounter: (key: string, value: number) => void;
   incrementCounter: (key: string) => void;
   decrementCounter: (key: string) => void;
+
+  // Wipe all in-memory session state (used on logout).
+  reset: () => void;
 }
 
 let activitySeq = 0;
@@ -170,4 +173,15 @@ export const useModuleStore = create<ModuleStoreState>((set) => ({
     set((s) => ({ counters: { ...s.counters, [key]: (s.counters[key] || 0) + 1 } })),
   decrementCounter: (key) =>
     set((s) => ({ counters: { ...s.counters, [key]: Math.max(0, (s.counters[key] || 0) - 1) } })),
+
+  // ---- Reset (logout) ----
+  reset: () =>
+    set(() => ({
+      activities: [],
+      notifications: [],
+      unreadCount: 0,
+      waitingQueue: [],
+      activeVisits: new Map(),
+      counters: {},
+    })),
 }));
