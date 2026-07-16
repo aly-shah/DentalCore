@@ -25,6 +25,8 @@ import {
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { RelativeTime } from "@/components/ui/relative-time";
 import { useStaff, useCreateUser, useDeleteUser, useBranches } from "@/hooks/use-queries";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@/types";
 import type { User, Branch } from "@/types";
@@ -70,18 +72,23 @@ export default function TeamPage() {
   const { data: branchesResponse } = useBranches();
   const createUser = useCreateUser();
   const deleteUser = useDeleteUser();
+  const { confirm } = useConfirm();
+  const toast = useToast();
   const { user: currentUser } = useAuth();
   const users = (staffResponse?.data || []) as User[];
   const branches = (branchesResponse?.data || []) as Branch[];
 
-  function handleDelete(user: User) {
-    const ok = window.confirm(
-      `Permanently delete ${user.name}?\n\nThe account is removed for good. Any past appointments, notes and invoices are kept but reassigned to you.`
-    );
+  async function handleDelete(user: User) {
+    const ok = await confirm({
+      title: `Delete ${user.name}?`,
+      message: "The account is removed for good. Any past appointments, notes and invoices are kept but reassigned to you.",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
     if (!ok) return;
     deleteUser.mutate(user.id, {
-      onSuccess: () => window.alert(`${user.name} was deleted.`),
-      onError: () => window.alert(`Could not delete ${user.name}. Please try again.`),
+      onSuccess: () => toast.success(`${user.name} was deleted.`),
+      onError: () => toast.error(`Could not delete ${user.name}. Please try again.`),
     });
   }
 

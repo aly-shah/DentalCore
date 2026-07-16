@@ -21,6 +21,8 @@ import {
 } from "@/components/ui";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { useBranches, useStaff, useCreateBranch, useDeleteBranch } from "@/hooks/use-queries";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import type { Branch, User } from "@/types";
 
 const emptyBranchForm = { name: "", code: "", address: "", phone: "", email: "" };
@@ -34,21 +36,26 @@ export default function BranchesPage() {
   const { data: staffResponse, isLoading: staffLoading } = useStaff();
   const createBranch = useCreateBranch();
   const deleteBranch = useDeleteBranch();
+  const { confirm } = useConfirm();
+  const toast = useToast();
   const branches = (branchesResponse?.data || []) as Branch[];
   const users = (staffResponse?.data || []) as User[];
   const isLoading = branchesLoading || staffLoading;
 
-  function handleDelete(branch: Branch) {
-    const ok = window.confirm(
-      `Remove ${branch.name}?\n\nIf it has staff, patients, appointments or invoices it'll be deactivated (hidden but data kept). Otherwise it'll be permanently deleted.`
-    );
+  async function handleDelete(branch: Branch) {
+    const ok = await confirm({
+      title: `Remove ${branch.name}?`,
+      message: "If it has staff, patients, appointments or invoices it'll be deactivated (hidden but data kept). Otherwise it'll be permanently deleted.",
+      confirmLabel: "Remove",
+      variant: "danger",
+    });
     if (!ok) return;
     deleteBranch.mutate(branch.id, {
       onSuccess: (res) => {
         const action = (res as { action?: string })?.action;
-        window.alert(action === "deactivated" ? `${branch.name} was deactivated (linked data kept).` : `${branch.name} was deleted.`);
+        toast.success(action === "deactivated" ? `${branch.name} was deactivated (linked data kept).` : `${branch.name} was deleted.`);
       },
-      onError: () => window.alert(`Could not remove ${branch.name}. Please try again.`),
+      onError: () => toast.error(`Could not remove ${branch.name}. Please try again.`),
     });
   }
 

@@ -20,6 +20,8 @@ import { RoomStatus, RoomType } from "@/types";
 import { formatTime } from "@/lib/utils";
 import { useModuleAccess } from "@/modules/core/hooks";
 import { useRooms, useBranches, useDeleteRoom } from "@/hooks/use-queries";
+import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth-context";
 import { LoadingSpinner } from "@/components/ui/loading";
 
@@ -50,15 +52,24 @@ export default function RoomsPage() {
   const { user } = useAuth();
   const canManage = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
   const deleteRoom = useDeleteRoom();
+  const { confirm } = useConfirm();
+  const toast = useToast();
 
-  function handleDeleteRoom(room: { id: string; name: string; status: string }) {
+  async function handleDeleteRoom(room: { id: string; name: string; status: string }) {
     if (room.status === RoomStatus.OCCUPIED) {
-      window.alert(`${room.name} is currently occupied. Free it before deleting.`);
+      toast.warning(`${room.name} is currently occupied. Free it before deleting.`);
       return;
     }
-    if (!window.confirm(`Delete ${room.name}? This permanently removes the room. Appointments keep their history but lose the room link.`)) return;
+    const ok = await confirm({
+      title: `Delete ${room.name}?`,
+      message: "This permanently removes the room. Appointments keep their history but lose the room link.",
+      confirmLabel: "Delete",
+      variant: "danger",
+    });
+    if (!ok) return;
     deleteRoom.mutate(room.id, {
-      onError: () => window.alert(`Could not delete ${room.name}. Please try again.`),
+      onSuccess: () => toast.success(`${room.name} was deleted.`),
+      onError: () => toast.error(`Could not delete ${room.name}. Please try again.`),
     });
   }
 
