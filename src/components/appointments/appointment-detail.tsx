@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import {
   X, Phone, AlertTriangle, Clock, MapPin, Stethoscope,
   LogIn, CheckCircle, CreditCard, LogOut, Calendar, Heart,
@@ -43,6 +44,7 @@ function getStepStatus(stepStage: WorkflowStage, currentStage: WorkflowStage): "
 }
 
 export function AppointmentDetail({ appointment, onClose }: AppointmentDetailProps) {
+  const router = useRouter();
   const emit = useModuleEmit("MOD-APPOINTMENT");
   const checkInMutation = useCheckInAppointment();
   const checkoutMutation = useCheckoutAppointment();
@@ -108,13 +110,23 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
   };
 
   const handleStartConsultation = async () => {
-    await updateMutation.mutateAsync({
-      id: appointment.id,
-      data: { status: "IN_PROGRESS", workflowStage: "CONSULT" },
-    });
-    emit(SystemEvents.CONSULTATION_STARTED, {
-      patientName: appointment.patientName,
-    }, { patientId: appointment.patientId, appointmentId: appointment.id });
+    // Move the appointment into consultation, then open the consultation
+    // workspace for this patient/appointment. Navigating is the point of the
+    // button — flipping the status alone looks like nothing happened. We still
+    // navigate even if the status write fails (e.g. it's already IN_PROGRESS).
+    try {
+      await updateMutation.mutateAsync({
+        id: appointment.id,
+        data: { status: "IN_PROGRESS", workflowStage: "CONSULT" },
+      });
+      emit(SystemEvents.CONSULTATION_STARTED, {
+        patientName: appointment.patientName,
+      }, { patientId: appointment.patientId, appointmentId: appointment.id });
+    } catch {
+      /* proceed to the consultation screen regardless */
+    }
+    onClose();
+    router.push(`/consultation?patientId=${appointment.patientId}&appointmentId=${appointment.id}`);
   };
 
   const handleCheckout = async () => {
@@ -166,7 +178,9 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
           {/* Progress Tracker */}
           <div className="bg-white rounded-2xl border border-stone-200/70 shadow-sm p-4 sm:p-5">
             <h3 className="text-xs font-semibold text-stone-400 uppercase tracking-wider mb-4">Patient Journey</h3>
-            <ProgressTracker steps={progressSteps} />
+            <div className="overflow-x-auto pb-1 -mx-1 px-1">
+              <ProgressTracker steps={progressSteps} />
+            </div>
           </div>
 
           {/* Patient Info */}
