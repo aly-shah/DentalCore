@@ -1,0 +1,68 @@
+name: Cleanup demo data
+
+# One-off, manually-triggered job: wipe demo/mock patient data on the VPS
+# while keeping staff (incl. doctors), branches, rooms and the treatment
+# catalog. Takes a pg_dump backup first. Never runs on push — dispatch only,
+# and only when the `confirm` input is exactly DELETE.
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type DELETE to wipe demo patient data (keeps staff/branches/rooms/treatments)'
+        required: true
+        default: ''
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: ${{ github.event.inputs.confirm == 'DELETE' }}
+    name: Backup + wipe demo patient data
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Decode SSH key
+        env:
+          SSH_PRIVATE_KEY_B64: ${{ secrets.SSH_PRIVATE_KEY_B64 }}
+        run: |
+          if [ -z "$SSH_PRIVATE_KEY_B64" ]; then
+            echo "::error::SSH_PRIVATE_KEY_B64 secret is not set"; exit 1
+          fi
+          install -d -m 700 ~/.ssh
+          echo "$SSH_PRIVATE_KEY_B64" | base64 -d > ~/.ssh/ci_deploy
+          chmod 600 ~/.ssh/ci_deploy
+
+      - name: Backup + run cleanup on the VPS
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          ssh -i ~/.ssh/ci_deploy -p "${PORT:-22}" -o StrictHostKeyChecking=accept-new "$USER@$HOST" bash -se <<'REMOTE'
+          set -euo pipefail
+          cd /var/www/dentacore/current
+
+          echo ">>> fetch the cleanup script"
+          git fetch --all --prune --quiet
+          git checkout origin/main -- prisma/cleanup-demo-data.ts
+
+          echo ">>> load DATABASE_URL from .env for pg_dump"
+          set -a; . ./.env; set +a
+
+          echo ">>> backup DB before wiping"
+          mkdir -p /var/www/dentacore/backups
+          STAMP=$(date +%Y%m%d-%H%M%S)
+          if command -v pg_dump >/dev/null 2>&1; then
+            pg_dump "$DATABASE_URL" > "/var/www/dentacore/backups/pre-cleanup-$STAMP.sql"
+            echo "backup written to /var/www/dentacore/backups/pre-cleanup-$STAMP.sql"
+          else
+            echo "::warning::pg_dump not found — skipping backup"
+          fi
+
+          echo ">>> run cleanup"
+          npx tsx prisma/cleanup-demo-data.ts
+          echo ">>> done"
+          REMOTE
