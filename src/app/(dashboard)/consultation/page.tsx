@@ -17,7 +17,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { SearchInput } from "@/components/ui/search-input";
 import {
-  usePatients, useAppointments, usePatientTriage, usePatientNotes,
+  usePatients, usePatient, useAppointments, usePatientTriage, usePatientNotes,
   usePatientPrescriptions, useTreatments,
   useCreatePatientNote, useCreatePatientPrescription, useCreatePatientLabTest,
   useCreatePatientFollowUp, useUpdateAppointment,
@@ -53,7 +53,14 @@ export default function ConsultationPage() {
     () => typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("appointmentId") || "" : ""
   );
   const [patientSearch, setPatientSearch] = useState("");
-  const selected = patients.find((p) => p.id === patientId);
+  // The list is paginated (default 20 newest), so a patient arriving via URL
+  // (?patientId=… from "Start Consultation") may not be in it. Fetch that one
+  // patient by id as a fallback so it auto-selects instead of showing the
+  // "Select a patient" empty state.
+  const { data: singlePatientRes } = usePatient(patientId);
+  const selected =
+    patients.find((p) => p.id === patientId) ||
+    (patientId ? (singlePatientRes?.data as Patient | undefined) : undefined);
   const patientAppts = todayAppts.filter((a) => a.patientId === patientId);
   const linkedAppt = todayAppts.find((a) => a.id === appointmentId);
 
