@@ -76,15 +76,12 @@ export default function TeamPage() {
 
   function handleDelete(user: User) {
     const ok = window.confirm(
-      `Remove ${user.name}?\n\nIf they have appointments, notes or invoices they'll be deactivated (hidden but history kept). Otherwise they'll be permanently deleted.`
+      `Permanently delete ${user.name}?\n\nThe account is removed for good. Any past appointments, notes and invoices are kept but reassigned to you.`
     );
     if (!ok) return;
     deleteUser.mutate(user.id, {
-      onSuccess: (res) => {
-        const action = (res as { action?: string })?.action;
-        window.alert(action === "deactivated" ? `${user.name} was deactivated (linked records kept).` : `${user.name} was deleted.`);
-      },
-      onError: () => window.alert(`Could not remove ${user.name}. Please try again.`),
+      onSuccess: () => window.alert(`${user.name} was deleted.`),
+      onError: () => window.alert(`Could not delete ${user.name}. Please try again.`),
     });
   }
 

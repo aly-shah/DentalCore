@@ -69,35 +69,51 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
     const existing = await prisma.user.findUnique({ where: { id } });
     if (!existing) return NextResponse.json({ success: false, error: "User not found" }, { status: 404 });
 
-    // Count records that reference this user. If any exist, a hard delete
-    // would orphan clinical/financial history, so we deactivate instead.
-    const [appts, createdAppts, notes, rx, procedures, labs, invoices, payments, schedules, patients] = await Promise.all([
-      prisma.appointment.count({ where: { doctorId: id } }),
-      prisma.appointment.count({ where: { createdById: id } }),
-      prisma.consultationNote.count({ where: { doctorId: id } }),
-      prisma.prescription.count({ where: { doctorId: id } }),
-      prisma.procedure.count({ where: { doctorId: id } }),
-      prisma.labTest.count({ where: { doctorId: id } }).catch(() => 0),
-      prisma.invoice.count({ where: { createdById: id } }),
-      prisma.payment.count({ where: { processedById: id } }).catch(() => 0),
-      prisma.schedule.count({ where: { doctorId: id } }).catch(() => 0),
-      prisma.patient.count({ where: { assignedDoctorId: id } }),
+    // Hard delete. Every row that references this user via a foreign key must
+    // be cleared first, or the delete fails. We preserve clinical/financial
+    // history by REASSIGNING authored records to the admin performing the
+    // deletion (a valid user), NULL out optional references, and delete rows
+    // that only make sense while the user exists (schedule, leave, their own
+    // notifications). Then the user itself is removed. All in one transaction
+    // so a failure rolls back cleanly and never half-deletes.
+    const actor = auth.user.id;
+    await prisma.$transaction([
+      // Reassign authored / actor records to the acting admin so they survive.
+      prisma.appointment.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.appointment.updateMany({ where: { createdById: id }, data: { createdById: actor } }),
+      prisma.consultationNote.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.prescription.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.procedure.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.labTest.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.followUp.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.aITranscription.updateMany({ where: { doctorId: id }, data: { doctorId: actor } }),
+      prisma.triage.updateMany({ where: { recordedById: id }, data: { recordedById: actor } }),
+      prisma.callLog.updateMany({ where: { userId: id }, data: { userId: actor } }),
+      prisma.invoice.updateMany({ where: { createdById: id }, data: { createdById: actor } }),
+      prisma.payment.updateMany({ where: { processedById: id }, data: { processedById: actor } }),
+      prisma.patientDocument.updateMany({ where: { uploadedById: id }, data: { uploadedById: actor } }),
+      // Null out optional references.
+      prisma.patient.updateMany({ where: { assignedDoctorId: id }, data: { assignedDoctorId: null } }),
+      prisma.lead.updateMany({ where: { assignedToId: id }, data: { assignedToId: null } }),
+      prisma.orthoCase.updateMany({ where: { doctorId: id }, data: { doctorId: null } }),
+      prisma.refund.updateMany({ where: { processedById: id }, data: { processedById: null } }),
+      prisma.refund.updateMany({ where: { approvedById: id }, data: { approvedById: null } }),
+      prisma.bookingRequest.updateMany({ where: { doctorId: id }, data: { doctorId: null } }),
+      prisma.communicationLog.updateMany({ where: { sentById: id }, data: { sentById: null } }),
+      prisma.auditLog.updateMany({ where: { userId: id }, data: { userId: null } }),
+      // Delete rows that only make sense while the user exists.
+      prisma.schedule.deleteMany({ where: { doctorId: id } }),
+      prisma.doctorLeave.deleteMany({ where: { doctorId: id } }),
+      prisma.blockedSlot.deleteMany({ where: { doctorId: id } }),
+      prisma.notification.deleteMany({ where: { userId: id } }),
+      prisma.voiceNote.deleteMany({ where: { doctorId: id } }),
+      // Finally, remove the user.
+      prisma.user.delete({ where: { id } }),
     ]);
-    const linked = appts + createdAppts + notes + rx + procedures + labs + invoices + payments + schedules + patients;
 
-    if (linked > 0) {
-      const user = await prisma.user.update({ where: { id }, data: { isActive: false } });
-      await logAudit({
-        userId: auth.user.id, action: "UPDATE", module: "STAFF", entityType: "User", entityId: id,
-        details: { deactivated: true, linkedRecords: linked, email: existing.email },
-      });
-      return NextResponse.json({ success: true, action: "deactivated", data: { id: user.id, isActive: false }, linkedRecords: linked });
-    }
-
-    await prisma.user.delete({ where: { id } });
     await logAudit({
-      userId: auth.user.id, action: "DELETE", module: "STAFF", entityType: "User", entityId: id,
-      details: { email: existing.email, role: existing.role },
+      userId: actor, action: "DELETE", module: "STAFF", entityType: "User", entityId: id,
+      details: { email: existing.email, role: existing.role, hardDeleted: true },
     });
     return NextResponse.json({ success: true, action: "deleted", data: { id } });
   } catch (error) {
