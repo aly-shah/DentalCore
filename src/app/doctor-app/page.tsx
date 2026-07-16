@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useState, type ReactNode, type FormEvent } from "react";
+import { Suspense, useState, useEffect, type ReactNode, type FormEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -247,6 +247,12 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { id?: string; name
   const openPatient = (pid: string) => setActivePatientId(pid);
   const closePatient = () => setActivePatientId(null);
 
+  // greeting()/todayLabel() read the local clock; computing them during SSR
+  // (UTC) vs the browser (local time) yields different text and breaks
+  // hydration — which disables the app's buttons. Compute after mount only.
+  const [clock, setClock] = useState<{ greet: string; label: string } | null>(null);
+  useEffect(() => setClock({ greet: greeting(), label: todayLabel() }), []);
+
   const { data: fetchedAppts = [] } = useQuery({
     queryKey: ["doctor-app", "appts", today],
     enabled: !demo,
@@ -303,7 +309,7 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { id?: string; name
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-semibold tracking-wide text-white/70">
-                {todayLabel()}
+                {clock?.label ?? ""}
                 {demo && (
                   <span className="ml-2 align-middle text-[9px] font-bold uppercase tracking-wider bg-white/20 text-white rounded-full px-1.5 py-0.5">
                     Demo
@@ -311,7 +317,7 @@ function DoctorApp({ user, onLogout, demo = false }: { user: { id?: string; name
                 )}
               </p>
               <p className="text-lg sm:text-xl font-bold leading-tight truncate">
-                {greeting()}, {displayName(user.name, user.role)}
+                {clock?.greet ?? "Welcome"}, {displayName(user.name, user.role)}
               </p>
             </div>
           </div>

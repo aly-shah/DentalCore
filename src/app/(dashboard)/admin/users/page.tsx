@@ -23,11 +23,11 @@ import {
   Select,
 } from "@/components/ui";
 import { SlidePanel } from "@/components/ui/slide-panel";
+import { RelativeTime } from "@/components/ui/relative-time";
 import { useStaff, useCreateUser, useDeleteUser, useBranches } from "@/hooks/use-queries";
 import { useAuth } from "@/lib/auth-context";
 import { UserRole } from "@/types";
 import type { User, Branch } from "@/types";
-import { timeAgo } from "@/lib/utils";
 
 const roleBadgeVariant: Record<string, "primary" | "info" | "success" | "warning" | "danger" | "default" | "purple"> = {
   [UserRole.SUPER_ADMIN]: "danger",
@@ -195,7 +195,11 @@ export default function TeamPage() {
                 </div>
                 <div className="flex items-center justify-center gap-1.5 text-xs text-stone-400">
                   <Clock className="w-3.5 h-3.5" />
-                  <span>{user.lastLogin ? timeAgo(user.lastLogin) : "Never logged in"}</span>
+                  <span>
+                    {user.lastLogin
+                      ? <RelativeTime date={user.lastLogin} fallback="Recently" />
+                      : "Never logged in"}
+                  </span>
                 </div>
                 {user.role === UserRole.DOCTOR && (user.consultationFee ?? 0) > 0 && (
                   <div className="flex items-center justify-center gap-1.5 text-xs text-stone-400">

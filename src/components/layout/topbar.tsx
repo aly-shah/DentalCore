@@ -102,8 +102,15 @@ export function Topbar() {
   }, [showSearch, flatHits, hitCursor, router]);
   const unreadCount = notifications.filter((n) => !n.isRead).length;
   const displayName = user?.name?.split(" ")[1] || user?.name?.split(" ")[0] || "there";
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+  // Compute the time-of-day greeting only after mount. It depends on the
+  // clock, and the server (UTC) and the browser (local time) can fall in
+  // different buckets — that text mismatch breaks hydration for the whole
+  // dashboard shell and silently disables every button on the page.
+  const [greeting, setGreeting] = useState("Welcome");
+  useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening");
+  }, []);
 
   useEffect(() => {
     api.notifications.list().then((res) => {
