@@ -11,6 +11,7 @@ import {
   Clock,
   Loader2,
   Trash2,
+  Pencil,
 } from "lucide-react";
 import {
   Button,
@@ -24,7 +25,7 @@ import {
 } from "@/components/ui";
 import { SlidePanel } from "@/components/ui/slide-panel";
 import { RelativeTime } from "@/components/ui/relative-time";
-import { useStaff, useCreateUser, useDeleteUser, useBranches } from "@/hooks/use-queries";
+import { useStaff, useCreateUser, useUpdateUser, useDeleteUser, useBranches } from "@/hooks/use-queries";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/components/ui/toast";
 import { useAuth } from "@/lib/auth-context";
@@ -66,11 +67,13 @@ export default function TeamPage() {
   const access = useModuleAccess("MOD-STAFF");
   const [search, setSearch] = useState("");
   const [panelOpen, setPanelOpen] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const { data: staffResponse, isLoading } = useStaff();
   const { data: branchesResponse } = useBranches();
   const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
   const { confirm } = useConfirm();
   const toast = useToast();
@@ -92,6 +95,41 @@ export default function TeamPage() {
     });
   }
 
+  function openCreate() {
+    setEditingId(null);
+    setForm(emptyForm);
+    setErrors({});
+    createUser.reset();
+    updateUser.reset();
+    setPanelOpen(true);
+  }
+
+  function openEdit(user: User) {
+    setEditingId(user.id);
+    setForm({
+      name: user.name || "",
+      email: user.email || "",
+      password: "",
+      role: user.role || "",
+      phone: user.phone || "",
+      branchId: user.branchId || "",
+      consultationFee: user.consultationFee != null ? String(user.consultationFee) : "",
+    });
+    setErrors({});
+    createUser.reset();
+    updateUser.reset();
+    setPanelOpen(true);
+  }
+
+  function closePanel() {
+    setPanelOpen(false);
+    setEditingId(null);
+    setForm(emptyForm);
+    setErrors({});
+    createUser.reset();
+    updateUser.reset();
+  }
+
   function setField(field: string, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }));
     if (errors[field]) setErrors((prev) => { const next = { ...prev }; delete next[field]; return next; });
@@ -100,24 +138,39 @@ export default function TeamPage() {
   function validate() {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = "Name is required";
-    if (!form.email.trim()) errs.email = "Email is required";
-    else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = "Invalid email";
-    if (!form.password.trim()) errs.password = "Password is required";
-    else if (form.password.length < 6) errs.password = "Min 6 characters";
+    // Email + password are set at creation only (not editable via PATCH).
+    if (!editingId) {
+      if (!form.email.trim()) errs.email = "Email is required";
+      else if (!/\S+@\S+\.\S+/.test(form.email)) errs.email = "Invalid email";
+      if (!form.password.trim()) errs.password = "Password is required";
+      else if (form.password.length < 6) errs.password = "Min 6 characters";
+    }
     if (!form.role) errs.role = "Role is required";
     return errs;
   }
 
+  const isSaving = createUser.isPending || updateUser.isPending;
+
   function handleSubmit() {
     const errs = validate();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
-    createUser.mutate(form, {
-      onSuccess: () => {
-        setPanelOpen(false);
-        setForm(emptyForm);
-        setErrors({});
-      },
-    });
+    if (editingId) {
+      const data: Record<string, unknown> = {
+        name: form.name,
+        role: form.role,
+        phone: form.phone || null,
+        consultationFee: form.role === UserRole.DOCTOR ? Number(form.consultationFee) || 0 : 0,
+      };
+      if (form.branchId) data.branchId = form.branchId;
+      updateUser.mutate({ id: editingId, data }, {
+        onSuccess: () => { closePanel(); toast.success(`${form.name} updated.`); },
+        onError: () => toast.error("Could not save changes. Please try again."),
+      });
+    } else {
+      createUser.mutate(form, {
+        onSuccess: () => { closePanel(); },
+      });
+    }
   }
 
   if (!access.canView) {
@@ -155,7 +208,7 @@ export default function TeamPage() {
           <h1 className="text-xl sm:text-2xl font-semibold text-stone-900">Team</h1>
           <p className="text-sm text-stone-500 mt-1">Your people, all in one place</p>
         </div>
-        <Button iconLeft={<Plus className="w-4 h-4" />} onClick={() => setPanelOpen(true)}>Add Member</Button>
+        <Button iconLeft={<Plus className="w-4 h-4" />} onClick={openCreate}>Add Member</Button>
       </div>
 
       {/* Stats */}
@@ -214,16 +267,25 @@ export default function TeamPage() {
                     <span>Consultation fee: {user.consultationFee}</span>
                   </div>
                 )}
-                {currentUser?.id !== user.id && (
+                <div className="w-full mt-1 flex items-center gap-2">
                   <button
-                    onClick={() => handleDelete(user)}
-                    disabled={deleteUser.isPending}
-                    className="w-full mt-1 flex items-center justify-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1.5 transition-colors disabled:opacity-50"
-                    aria-label={`Remove ${user.name}`}
+                    onClick={() => openEdit(user)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-stone-500 hover:text-stone-800 hover:bg-stone-100 rounded-lg py-1.5 transition-colors"
+                    aria-label={`Edit ${user.name}`}
                   >
-                    <Trash2 className="w-3.5 h-3.5" /> Remove
+                    <Pencil className="w-3.5 h-3.5" /> Edit
                   </button>
-                )}
+                  {currentUser?.id !== user.id && (
+                    <button
+                      onClick={() => handleDelete(user)}
+                      disabled={deleteUser.isPending}
+                      className="flex-1 flex items-center justify-center gap-1.5 text-xs font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg py-1.5 transition-colors disabled:opacity-50"
+                      aria-label={`Remove ${user.name}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Remove
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </Card>
@@ -236,33 +298,39 @@ export default function TeamPage() {
         </Card>
       )}
 
-      {/* Add Member Panel */}
+      {/* Add / Edit Member Panel */}
       <SlidePanel
         isOpen={panelOpen}
-        onClose={() => { setPanelOpen(false); setForm(emptyForm); setErrors({}); createUser.reset(); }}
-        title="Add Team Member"
-        subtitle="Create a new staff account"
+        onClose={closePanel}
+        title={editingId ? "Edit Team Member" : "Add Team Member"}
+        subtitle={editingId ? "Update this staff member's details" : "Create a new staff account"}
         width="md"
         footer={
           <>
-            <Button variant="ghost" onClick={() => { setPanelOpen(false); setForm(emptyForm); setErrors({}); createUser.reset(); }}>
+            <Button variant="ghost" onClick={closePanel}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={createUser.isPending}>
-              {createUser.isPending ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Creating...</> : "Create Member"}
+            <Button onClick={handleSubmit} disabled={isSaving}>
+              {isSaving
+                ? <><Loader2 className="w-4 h-4 animate-spin mr-2" />Saving...</>
+                : editingId ? "Save Changes" : "Create Member"}
             </Button>
           </>
         }
       >
         <div className="space-y-4">
-          {createUser.isError && (
+          {(createUser.isError || updateUser.isError) && (
             <div className="p-3 rounded-xl bg-red-50 border border-red-100 text-sm text-red-600">
-              {createUser.error?.message || "Failed to create user"}
+              {createUser.error?.message || updateUser.error?.message || "Failed to save user"}
             </div>
           )}
           <Input label="Full Name" required placeholder="e.g. Dr. Sarah Ahmed" value={form.name} onChange={(e) => setField("name", e.target.value)} error={errors.name} />
-          <Input label="Email" required type="email" placeholder="sarah@clinic.com" value={form.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />
-          <Input label="Password" required type="password" placeholder="Min 6 characters" value={form.password} onChange={(e) => setField("password", e.target.value)} error={errors.password} />
+          {!editingId && (
+            <>
+              <Input label="Email" required type="email" placeholder="sarah@clinic.com" value={form.email} onChange={(e) => setField("email", e.target.value)} error={errors.email} />
+              <Input label="Password" required type="password" placeholder="Min 6 characters" value={form.password} onChange={(e) => setField("password", e.target.value)} error={errors.password} />
+            </>
+          )}
           <Select label="Role" required placeholder="Select role..." options={roleOptions} value={form.role} onChange={(e) => setField("role", e.target.value)} error={errors.role} />
           <Input label="Phone" placeholder="+20 100 000 0000" value={form.phone} onChange={(e) => setField("phone", e.target.value)} />
           <Select
