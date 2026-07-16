@@ -27,6 +27,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { downloadCSV } from "@/lib/export";
 import { CreateInvoiceModal } from "@/components/billing/create-invoice-modal";
 import { PaymentModal } from "@/components/billing/payment-modal";
+import { InvoiceDetailModal } from "@/components/billing/invoice-detail-modal";
 import { useModuleAccess } from "@/modules/core/hooks";
 import type { Invoice } from "@/types";
 
@@ -45,6 +46,7 @@ export default function BillingPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
 
   const { data: invoicesResponse, isLoading } = useInvoices();
   const invoices = (invoicesResponse?.data || []) as Invoice[];
@@ -200,7 +202,7 @@ export default function BillingPage() {
                 {formatCurrency(invoice.total)}
               </p>
               <div className="flex gap-2">
-                {invoice.status !== "PAID" && invoice.status !== "DRAFT" && (
+                {invoice.status !== "PAID" && invoice.status !== "DRAFT" && invoice.status !== "CANCELLED" && (
                   <Button
                     size="sm"
                     variant="primary"
@@ -213,16 +215,17 @@ export default function BillingPage() {
                     Collect
                   </Button>
                 )}
-                {(invoice.status === "PAID" || invoice.status === "DRAFT") && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    iconLeft={<FileText className="w-3.5 h-3.5" />}
-                    onClick={() => setSelectedInvoice(invoice)}
-                  >
-                    View
-                  </Button>
-                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  iconLeft={<FileText className="w-3.5 h-3.5" />}
+                  onClick={() => {
+                    setSelectedInvoice(invoice);
+                    setShowViewModal(true);
+                  }}
+                >
+                  View
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -258,6 +261,22 @@ export default function BillingPage() {
             setSelectedInvoice(null);
           }}
           invoice={selectedInvoice}
+        />
+      )}
+
+      {selectedInvoice && (
+        <InvoiceDetailModal
+          isOpen={showViewModal}
+          onClose={() => {
+            setShowViewModal(false);
+            setSelectedInvoice(null);
+          }}
+          invoice={selectedInvoice}
+          onCollect={(inv) => {
+            setShowViewModal(false);
+            setSelectedInvoice(inv);
+            setShowPaymentModal(true);
+          }}
         />
       )}
     </div>
