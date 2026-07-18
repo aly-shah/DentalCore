@@ -52,7 +52,7 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
   const [success, setSuccess] = useState(false);
   const [newPatientId, setNewPatientId] = useState("");
 
-  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
+  const { ageValue, onDobChange, onAgeChange, impliedBirthYear } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof initialForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -213,6 +213,9 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
                 />
               </div>
             </div>
+            {impliedBirthYear && (
+              <p className="mt-1.5 text-xs text-stone-400">≈ {impliedBirthYear}</p>
+            )}
           </div>
 
           {/* Phone */}

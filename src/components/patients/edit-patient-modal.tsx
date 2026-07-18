@@ -64,7 +64,7 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
     }
   }
 
-  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
+  const { ageValue, onDobChange, onAgeChange, impliedBirthYear } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -162,7 +162,7 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
               <Input label="Last Name" placeholder="Last name" required value={form.lastName} onChange={set("lastName")} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText="Or enter age →" />
+              <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText={impliedBirthYear ?? "Or enter age →"} />
               <Input label="Age" inputMode="numeric" value={ageValue} onChange={onAgeChange} placeholder="e.g. 32" helperText={form.dateOfBirth ? "From date of birth" : "Years"} />
               <Select
                 label="Gender"

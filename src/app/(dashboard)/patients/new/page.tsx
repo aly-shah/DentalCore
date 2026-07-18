@@ -54,7 +54,7 @@ export default function NewPatientPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
+  const { ageValue, onDobChange, onAgeChange, impliedBirthYear } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof initialForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -181,7 +181,7 @@ export default function NewPatientPage() {
                   <Input label="Last Name" placeholder="Last name" required value={form.lastName} onChange={set("lastName")} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText="Or enter age →" />
+                  <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText={impliedBirthYear ?? "Or enter age →"} />
                   <Input label="Age" inputMode="numeric" value={ageValue} onChange={onAgeChange} placeholder="e.g. 32" helperText={form.dateOfBirth ? "From date of birth" : "Years"} />
                   <Select label="Gender" required placeholder="Select" value={form.gender} onChange={set("gender")}
                     options={[{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }, { value: "OTHER", label: "Other" }]} />

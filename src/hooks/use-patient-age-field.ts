@@ -38,7 +38,25 @@ export function usePatientAgeField<T extends AgeFormShape>(
       dateOfBirth: "",
     }));
 
-  return { ageValue, onDobChange, onAgeChange };
+  // Show which birth year an entered age points at. Someone who is N today was
+  // born in (thisYear - N) if their birthday has already passed, or the year
+  // before if it hasn't — hence a two-year span rather than a single year.
+  const impliedBirthYear = impliedBirthYearHint(form);
+
+  return { ageValue, onDobChange, onAgeChange, impliedBirthYear };
+}
+
+/** e.g. "born 1993–1994" for an age entered without a full date, else null. */
+export function impliedBirthYearHint(form: AgeFormShape): string | null {
+  if (form.dateOfBirth || !form.age) return null;
+  const age = Number(form.age);
+  if (!Number.isInteger(age) || age < MIN_PATIENT_AGE || age > MAX_PATIENT_AGE) {
+    return null;
+  }
+  const thisYear = new Date().getFullYear();
+  const earliest = thisYear - age - 1; // birthday not yet reached this year
+  const latest = thisYear - age; //       birthday already passed this year
+  return `born ${earliest}–${latest}`;
 }
 
 /** Shared client-side rule: exactly one of DOB / age, and a sane age. */

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { parsePatientAge, serializePatientAge } from "./patient-age";
 import { resolvePatientAge, formatAge, isAgeApproximate } from "./utils";
+import { impliedBirthYearHint } from "@/hooks/use-patient-age-field";
 
 afterEach(() => vi.useRealTimers());
 
@@ -123,6 +124,30 @@ describe("formatAge", () => {
 
   it("renders a newborn rather than treating 0 as unknown", () => {
     expect(formatAge({ age: 0 })).toBe("0y");
+  });
+});
+
+describe("impliedBirthYearHint", () => {
+  it("returns null when a DOB is present", () => {
+    expect(impliedBirthYearHint({ dateOfBirth: "1994-03-02", age: "" })).toBeNull();
+  });
+
+  it("returns null when no age is entered", () => {
+    expect(impliedBirthYearHint({ dateOfBirth: "", age: "" })).toBeNull();
+  });
+
+  it("returns null for an out-of-range age", () => {
+    expect(impliedBirthYearHint({ dateOfBirth: "", age: "999" })).toBeNull();
+  });
+
+  it("spans the two possible birth years for the entered age", () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-07-18"));
+    expect(impliedBirthYearHint({ dateOfBirth: "", age: "32" })).toBe("born 1993–1994");
+  });
+
+  it("handles a newborn", () => {
+    vi.useFakeTimers().setSystemTime(new Date("2026-07-18"));
+    expect(impliedBirthYearHint({ dateOfBirth: "", age: "0" })).toBe("born 2025–2026");
   });
 });
 
