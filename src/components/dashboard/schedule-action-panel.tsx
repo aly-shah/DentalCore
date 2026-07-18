@@ -38,6 +38,8 @@ interface ScheduleActionPanelProps {
   appointment: Apt | null;
   isOpen: boolean;
   onClose: () => void;
+  /** Raise above another slide-over when opened from one (e.g. appointment detail). */
+  elevated?: boolean;
 }
 
 // ---- defensive field extraction (appointment shape varies by endpoint) ----
@@ -79,7 +81,7 @@ const blankItem = (): LineItem => ({
   total: 0,
 });
 
-export function ScheduleActionPanel({ appointment, isOpen, onClose }: ScheduleActionPanelProps) {
+export function ScheduleActionPanel({ appointment, isOpen, onClose, elevated }: ScheduleActionPanelProps) {
   const { user } = useAuth();
   const emit = useModuleEmit("MOD-BILLING");
 
@@ -259,6 +261,7 @@ export function ScheduleActionPanel({ appointment, isOpen, onClose }: ScheduleAc
       title={patientName(appointment)}
       subtitle={patientCode(appointment) ? `${patientCode(appointment)} · Appointment` : "Appointment"}
       width="xl"
+      elevated={elevated}
       data-id="SCHEDULE-ACTION-PANEL"
       footer={
         <>

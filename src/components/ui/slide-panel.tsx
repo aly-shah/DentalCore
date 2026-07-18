@@ -12,6 +12,8 @@ interface SlidePanelProps {
   children: ReactNode;
   footer?: ReactNode;
   width?: "sm" | "md" | "lg" | "xl";
+  /** Raise above another slide-over/overlay (z-40/50) when nested inside one. */
+  elevated?: boolean;
   "data-id"?: string;
 }
 
@@ -22,7 +24,7 @@ const widthStyles = {
   xl: "w-full sm:w-[600px] lg:w-[640px]",
 };
 
-export function SlidePanel({ isOpen, onClose, title, subtitle, children, footer, width = "lg", ...props }: SlidePanelProps) {
+export function SlidePanel({ isOpen, onClose, title, subtitle, children, footer, width = "lg", elevated = false, ...props }: SlidePanelProps) {
   useEffect(() => {
     if (isOpen) document.body.style.overflow = "hidden";
     else document.body.style.overflow = "";
@@ -35,14 +37,18 @@ export function SlidePanel({ isOpen, onClose, title, subtitle, children, footer,
     <>
       {/* Overlay */}
       <div
-        className="fixed inset-0 z-40 bg-stone-900/25 backdrop-blur-sm transition-opacity"
+        className={cn(
+          "fixed inset-0 bg-stone-900/25 backdrop-blur-sm transition-opacity",
+          elevated ? "z-[60]" : "z-40"
+        )}
         onClick={onClose}
       />
 
       {/* Panel */}
       <div
         className={cn(
-          "fixed inset-y-0 right-0 z-50 bg-white shadow-2xl flex flex-col",
+          "fixed inset-y-0 right-0 bg-white shadow-2xl flex flex-col",
+          elevated ? "z-[70]" : "z-50",
           "animate-in slide-in-from-right duration-300 ease-out",
           widthStyles[width]
         )}

@@ -10,6 +10,7 @@ import {
   Search,
   Timer,
   Heart,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +24,7 @@ import {
 } from "@/lib/constants";
 import { useModuleAccess, useModuleEmit } from "@/modules/core/hooks";
 import { useAppointments, useCheckInAppointment, useNoShowAppointment } from "@/hooks/use-queries";
+import { ScheduleActionPanel } from "@/components/dashboard/schedule-action-panel";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { SystemEvents } from "@/modules/core/events";
 
@@ -52,13 +54,16 @@ export default function CheckInPage() {
   const noShowMutation = useNoShowAppointment();
   const [search, setSearch] = useState("");
   const [localStatuses, setLocalStatuses] = useState<Record<string, AppointmentStatus>>({});
+  const [selectedApt, setSelectedApt] = useState<Record<string, unknown> | null>(null);
 
   const { data: appointmentsResponse, isLoading } = useAppointments({ date: today });
   const allAppointments = (appointmentsResponse?.data || []) as Appointment[];
 
   const todayAppointments = useMemo(() => {
     return allAppointments
-      .filter((a) => a.date === today)
+      // `date` arrives as a full ISO timestamp (…T00:00:00.000Z); compare the
+      // calendar-day prefix so it matches getClinicToday()'s YYYY-MM-DD.
+      .filter((a) => String(a.date).slice(0, 10) === today)
       .filter(
         (a) =>
           a.status !== AppointmentStatus.CANCELLED &&
@@ -92,6 +97,9 @@ export default function CheckInPage() {
           patientName: appt.patientName,
           doctorName: appt.doctorName,
         }, { patientId: appt.patientId, appointmentId: appt.id });
+        // Check-in creates the draft invoice — open it so the front desk can
+        // bill. Reflect the just-applied CHECKED_IN status in the panel.
+        setSelectedApt({ ...appt, status: AppointmentStatus.CHECKED_IN } as unknown as Record<string, unknown>);
       }
     } catch {
       // Revert optimistic update
@@ -303,10 +311,24 @@ export default function CheckInPage() {
                         </>
                       )}
                       {isCheckedIn && (
-                        <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 rounded-2xl px-5 py-3">
-                          <CheckCircle2 className="w-5 h-5" />
-                          <span className="font-semibold text-sm">Checked In</span>
-                        </div>
+                        <>
+                          <div className="flex items-center gap-2 bg-emerald-100 text-emerald-700 rounded-2xl px-5 py-3">
+                            <CheckCircle2 className="w-5 h-5" />
+                            <span className="font-semibold text-sm">Checked In</span>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            iconLeft={<Receipt className="w-4 h-4" />}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedApt({ ...appt, status: getStatus(appt.id, appt.status) } as unknown as Record<string, unknown>);
+                            }}
+                            className="rounded-2xl"
+                          >
+                            Invoice
+                          </Button>
+                        </>
                       )}
                       {isInProgress && (
                         <Badge variant="info" dot>
@@ -407,6 +429,12 @@ export default function CheckInPage() {
           </Card>
         </div>
       </div>
+
+      <ScheduleActionPanel
+        appointment={selectedApt}
+        isOpen={!!selectedApt}
+        onClose={() => setSelectedApt(null)}
+      />
     </div>
   );
 }

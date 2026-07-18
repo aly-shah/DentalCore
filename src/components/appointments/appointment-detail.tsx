@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   X, Phone, AlertTriangle, Clock, MapPin, Stethoscope,
   LogIn, CheckCircle, CreditCard, LogOut, Calendar, Heart,
-  XCircle, FileText, Pill, FlaskConical,
+  XCircle, FileText, Pill, FlaskConical, Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,7 @@ import { SystemEvents } from "@/modules/core/events";
 import { AppointmentStatus, WorkflowStage } from "@/types";
 import { appointmentStatusColors, appointmentTypeLabels } from "@/lib/constants";
 import { formatCurrency, CLINIC_TZ } from "@/lib/utils";
+import { ScheduleActionPanel } from "@/components/dashboard/schedule-action-panel";
 import type { Appointment } from "@/types";
 
 interface AppointmentDetailProps {
@@ -94,8 +95,16 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
     status: getStepStatus(ws.stage, fullAppt.workflowStage),
   }));
 
+  const [showInvoice, setShowInvoice] = useState(false);
+
   const currentStatus = fullAppt.status;
   const showCheckIn = currentStatus === AppointmentStatus.SCHEDULED || currentStatus === AppointmentStatus.CONFIRMED;
+  // Billing makes sense once the patient is in the building.
+  const showInvoiceAction =
+    currentStatus === AppointmentStatus.CHECKED_IN ||
+    currentStatus === AppointmentStatus.WAITING ||
+    currentStatus === AppointmentStatus.IN_PROGRESS ||
+    currentStatus === AppointmentStatus.COMPLETED;
   const showStartConsultation = currentStatus === AppointmentStatus.WAITING || currentStatus === AppointmentStatus.CHECKED_IN;
   const showBilling = currentStatus === AppointmentStatus.IN_PROGRESS;
   const showCheckout = currentStatus === AppointmentStatus.COMPLETED;
@@ -107,6 +116,8 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
       patientName: appointment.patientName,
       doctorName: appointment.doctorName,
     }, { patientId: appointment.patientId, appointmentId: appointment.id });
+    // Check-in creates the draft invoice — open it so the front desk can bill.
+    setShowInvoice(true);
   };
 
   const handleStartConsultation = async () => {
@@ -332,6 +343,12 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
               Proceed to Billing
             </Button>
           )}
+          {showInvoiceAction && (
+            <Button variant="outline" className="rounded-2xl py-3" size="lg" iconLeft={<Receipt className="w-5 h-5" />}
+              onClick={() => setShowInvoice(true)}>
+              Invoice
+            </Button>
+          )}
           {showCheckout && (
             <Button variant="soft" className="flex-1 rounded-2xl py-3" size="lg" iconLeft={<LogOut className="w-5 h-5" />}
               onClick={handleCheckout} disabled={checkoutMutation.isPending}>
@@ -347,6 +364,13 @@ export function AppointmentDetail({ appointment, onClose }: AppointmentDetailPro
           <Button variant="secondary" className="rounded-2xl py-3" size="lg" onClick={onClose}>Close</Button>
         </div>
       </div>
+
+      <ScheduleActionPanel
+        appointment={fullAppt as unknown as Record<string, unknown>}
+        isOpen={showInvoice}
+        onClose={() => setShowInvoice(false)}
+        elevated
+      />
     </>
   );
 }
