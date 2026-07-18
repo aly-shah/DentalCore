@@ -12,6 +12,8 @@ import { useDashboardStats, useAppointments } from "@/hooks/use-queries";
 import Link from "next/link";
 import { useModuleStore } from "@/modules/core/store";
 import { useAuth } from "@/lib/auth-context";
+import { ScheduleActionPanel } from "@/components/dashboard/schedule-action-panel";
+import { useState } from "react";
 
 import { getClinicToday, CLINIC_TZ } from "@/lib/utils";
 const quickActions = [
@@ -37,6 +39,7 @@ function getAptDoc(apt: Record<string, unknown>): string {
 export function ReceptionistDashboard() {
   const { activities, waitingQueue } = useModuleStore();
   const { user } = useAuth();
+  const [selectedApt, setSelectedApt] = useState<Record<string, unknown> | null>(null);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Date().toLocaleDateString("en-PK", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: CLINIC_TZ });
@@ -105,7 +108,8 @@ export function ReceptionistDashboard() {
               return (
                 <div
                   key={apt.id as string}
-                  className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 sm:p-5 flex items-center gap-4 hover:shadow-md transition-shadow"
+                  onClick={() => setSelectedApt(apt)}
+                  className="bg-white rounded-2xl border border-stone-100 shadow-sm p-4 sm:p-5 flex items-center gap-4 hover:shadow-md hover:border-blue-200 transition-shadow cursor-pointer"
                 >
                   <Avatar name={getAptName(apt)} size="sm" />
                   <div className="flex-1 min-w-0">
@@ -116,6 +120,7 @@ export function ReceptionistDashboard() {
                     <Button
                       size="sm"
                       data-id="APPT-CHECKIN-CONFIRM"
+                      onClick={(e) => { e.stopPropagation(); setSelectedApt(apt); }}
                       className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl px-5 font-medium"
                     >
                       CHECK IN
@@ -166,6 +171,8 @@ export function ReceptionistDashboard() {
           ))}
         </div>
       </div>
+
+      <ScheduleActionPanel appointment={selectedApt} isOpen={!!selectedApt} onClose={() => setSelectedApt(null)} />
     </div>
   );
 }

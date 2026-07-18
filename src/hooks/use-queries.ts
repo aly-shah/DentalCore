@@ -398,6 +398,38 @@ export function useCreateInvoice() {
   });
 }
 
+/** The (unique) invoice attached to an appointment, if any. */
+export function useInvoiceByAppointment(appointmentId: string, enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.billing.invoices({ appointmentId }),
+    queryFn: () => api.billing.invoices({ appointmentId }),
+    enabled: enabled && !!appointmentId,
+  });
+}
+
+export function useUpdateInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, unknown> }) =>
+      api.billing.updateInvoice(id, data),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["billing"] }),
+  });
+}
+
+export function useEmailInvoice() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: Record<string, unknown> }) =>
+      api.billing.emailInvoice(id, data),
+  });
+}
+
+export function useWhatsappInvoice() {
+  return useMutation({
+    mutationFn: ({ id, data }: { id: string; data?: Record<string, unknown> }) =>
+      api.billing.whatsappInvoice(id, data),
+  });
+}
+
 export function usePayments(params?: Record<string, string>) {
   return useQuery({
     queryKey: queryKeys.billing.payments(params),

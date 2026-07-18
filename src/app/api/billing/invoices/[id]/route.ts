@@ -68,23 +68,48 @@ export async function PUT(
       );
     }
 
+    // Line items are sent as a full replacement set; Prisma needs a nested
+    // write (deleteMany + create), not a bare array assignment.
+    let itemsWrite: object | undefined;
+    if (Array.isArray(body.items)) {
+      itemsWrite = {
+        deleteMany: {},
+        create: body.items.map((it: Record<string, unknown>) => ({
+          description: String(it.description ?? ""),
+          type: String(it.type ?? "PROCEDURE"),
+          quantity: Number(it.quantity ?? 1),
+          unitPrice: Number(it.unitPrice ?? 0),
+          total: Number(it.total ?? Number(it.unitPrice ?? 0) * Number(it.quantity ?? 1)),
+        })),
+      };
+    }
+
+    // Keep the balance consistent with the new total unless explicitly given.
+    const balanceDue =
+      body.balanceDue !== undefined
+        ? body.balanceDue
+        : body.total !== undefined
+        ? Number(body.total) - Number(body.amountPaid ?? existing.amountPaid ?? 0)
+        : undefined;
+
     const invoice = await prisma.invoice.update({
       where: { id },
       data: {
-        ...(body.items && { items: body.items }),
+        ...(itemsWrite && { items: itemsWrite }),
         ...(body.subtotal !== undefined && { subtotal: body.subtotal }),
         ...(body.discount !== undefined && { discount: body.discount }),
         ...(body.discountType && { discountType: body.discountType }),
         ...(body.tax !== undefined && { tax: body.tax }),
         ...(body.total !== undefined && { total: body.total }),
         ...(body.amountPaid !== undefined && { amountPaid: body.amountPaid }),
-        ...(body.balanceDue !== undefined && { balanceDue: body.balanceDue }),
+        ...(balanceDue !== undefined && { balanceDue }),
         ...(body.status && { status: body.status }),
         ...(body.dueDate && { dueDate: new Date(body.dueDate) }),
         ...(body.notes !== undefined && { notes: body.notes }),
       },
       include: {
         patient: { select: { id: true, firstName: true, lastName: true, patientCode: true } },
+        items: true,
         payments: true,
       },
     });

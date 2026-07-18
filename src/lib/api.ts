@@ -96,6 +96,9 @@ export const api = {
     },
     invoice: (id: string) => apiFetch<unknown>(`/api/billing/invoices/${id}`),
     createInvoice: (data: Record<string, unknown>) => apiFetch<unknown>("/api/billing/invoices", { method: "POST", body: JSON.stringify(data) }),
+    updateInvoice: (id: string, data: Record<string, unknown>) => apiFetch<unknown>(`/api/billing/invoices/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+    emailInvoice: (id: string, data?: Record<string, unknown>) => apiFetch<unknown>(`/api/billing/invoices/${id}/email`, { method: "POST", body: JSON.stringify(data ?? {}) }),
+    whatsappInvoice: (id: string, data?: Record<string, unknown>) => apiFetch<unknown>(`/api/billing/invoices/${id}/whatsapp`, { method: "POST", body: JSON.stringify(data ?? {}) }),
     payments: (params?: Record<string, string>) => {
       const qs = buildQuery(params);
       return apiFetch<unknown[]>(`/api/billing/payments${qs}`);

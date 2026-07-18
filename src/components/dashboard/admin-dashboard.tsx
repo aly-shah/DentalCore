@@ -18,6 +18,7 @@ import { useModuleStore } from "@/modules/core/store";
 import { AddPatientModal } from "@/components/patients/add-patient-modal";
 import { CreateAppointmentModal } from "@/components/appointments/create-appointment-modal";
 import { CreateInvoiceModal } from "@/components/billing/create-invoice-modal";
+import { ScheduleActionPanel } from "@/components/dashboard/schedule-action-panel";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/lib/auth-context";
@@ -58,6 +59,7 @@ export function AdminDashboard() {
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [showBookAppointment, setShowBookAppointment] = useState(false);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+  const [selectedApt, setSelectedApt] = useState<Record<string, unknown> | null>(null);
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const todayLabel = new Date().toLocaleDateString("en-PK", { weekday: "long", month: "long", day: "numeric", year: "numeric", timeZone: CLINIC_TZ });
@@ -127,8 +129,7 @@ export function AdminDashboard() {
               <div className="text-sm text-stone-400 py-8 text-center">No appointments scheduled for today.</div>
             ) : (
               todayApts.map((apt) => {
-                const pid = getAptPatientId(apt);
-                const cls = `bg-white rounded-2xl border border-stone-100 shadow-sm p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 hover:shadow-md transition-shadow ${pid ? "cursor-pointer hover:border-blue-200" : ""}`;
+                const cls = "bg-white rounded-2xl border border-stone-100 shadow-sm p-3.5 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 hover:shadow-md transition-shadow w-full text-left cursor-pointer hover:border-blue-200";
                 const inner = (
                   <>
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0 sm:flex-1">
@@ -155,14 +156,10 @@ export function AdminDashboard() {
                     </div>
                   </>
                 );
-                return pid ? (
-                  <Link key={apt.id as string} href={`/patients/${pid}`} className={cls}>
+                return (
+                  <button type="button" key={apt.id as string} onClick={() => setSelectedApt(apt)} className={cls}>
                     {inner}
-                  </Link>
-                ) : (
-                  <div key={apt.id as string} className={cls}>
-                    {inner}
-                  </div>
+                  </button>
                 );
               })
             )}
@@ -231,6 +228,7 @@ export function AdminDashboard() {
       <AddPatientModal isOpen={showAddPatient} onClose={() => setShowAddPatient(false)} />
       <CreateAppointmentModal isOpen={showBookAppointment} onClose={() => setShowBookAppointment(false)} />
       <CreateInvoiceModal isOpen={showCreateInvoice} onClose={() => setShowCreateInvoice(false)} />
+      <ScheduleActionPanel appointment={selectedApt} isOpen={!!selectedApt} onClose={() => setSelectedApt(null)} />
     </div>
   );
 }

@@ -25,6 +25,7 @@ import { SystemEvents } from "@/modules/core/events";
 import { useModuleStore } from "@/modules/core/store";
 import { AddPatientModal } from "@/components/patients/add-patient-modal";
 import { CreateAppointmentModal } from "@/components/appointments/create-appointment-modal";
+import { ScheduleActionPanel } from "@/components/dashboard/schedule-action-panel";
 import { cn, getClinicToday, CLINIC_TZ } from "@/lib/utils";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -92,6 +93,7 @@ export function DoctorDashboard() {
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [showBookAppointment, setShowBookAppointment] = useState(false);
   const [showOutcome, setShowOutcome] = useState<Appointment | null>(null);
+  const [selectedApt, setSelectedApt] = useState<Record<string, unknown> | null>(null);
 
   // Doctor status
   const [doctorStatus, setDoctorStatus] = useState<"available" | "in_consultation" | "on_break" | "unavailable">(
@@ -332,7 +334,7 @@ export function DoctorDashboard() {
                     </div>
                     <div className="w-px h-8 bg-stone-100" />
                     <Avatar name={getPatientName(appt)} size="sm" />
-                    <button onClick={() => router.push(`/patients/${appt.patientId}`)} className="flex-1 min-w-0 text-left cursor-pointer">
+                    <button onClick={() => setSelectedApt(appt as unknown as Record<string, unknown>)} className="flex-1 min-w-0 text-left cursor-pointer">
                       <p className="text-sm font-medium text-stone-900 truncate">{getPatientName(appt)}</p>
                       <p className="text-xs text-stone-400">{appt.type.replace("_", " ")}{appt.roomName ? ` · ${appt.roomName}` : ""}</p>
                     </button>
@@ -420,6 +422,7 @@ export function DoctorDashboard() {
       {/* Modals */}
       <AddPatientModal isOpen={showAddPatient} onClose={() => setShowAddPatient(false)} />
       <CreateAppointmentModal isOpen={showBookAppointment} onClose={() => setShowBookAppointment(false)} />
+      <ScheduleActionPanel appointment={selectedApt} isOpen={!!selectedApt} onClose={() => setSelectedApt(null)} />
 
       {/* Quick Outcome Panel */}
       {showOutcome && (

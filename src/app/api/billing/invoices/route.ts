@@ -17,6 +17,7 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const patientId = searchParams.get("patientId");
+    const appointmentId = searchParams.get("appointmentId");
     const branchId = searchParams.get("branchId");
     const from = searchParams.get("from");
     const to = searchParams.get("to");
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
       where.status = statuses.length > 1 ? { in: statuses } : statuses[0];
     }
     if (patientId) where.patientId = patientId;
+    if (appointmentId) where.appointmentId = appointmentId;
     if (branchId) where.branchId = branchId;
     if (from || to) {
       where.createdAt = {};
@@ -48,6 +50,7 @@ export async function GET(request: Request) {
         include: {
           patient: { select: { id: true, firstName: true, lastName: true, patientCode: true } },
           branch: { select: { id: true, name: true, code: true } },
+          items: true,
           payments: true,
           createdBy: { select: { id: true, name: true } },
         },
