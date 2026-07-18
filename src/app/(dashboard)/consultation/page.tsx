@@ -26,7 +26,7 @@ import { useRouter } from "next/navigation";
 import { useModuleAccess, useModuleEmit } from "@/modules/core/hooks";
 import { SystemEvents } from "@/modules/core/events";
 import { useAuth } from "@/lib/auth-context";
-import { cn, getClinicToday, toClinicDay, CLINIC_TZ } from "@/lib/utils";
+import { cn, getClinicToday, toClinicDay, formatAge, CLINIC_TZ } from "@/lib/utils";
 import type { Patient, Appointment, Triage } from "@/types";
 import { TemplatePicker, type ConsultationTemplate } from "@/components/consultation/template-picker";
 
@@ -211,9 +211,8 @@ export default function ConsultationPage() {
               typeof a === "string" ? a : a.allergen ?? "").filter(Boolean) }
           : {}),
       };
-      if (selected?.dateOfBirth) {
-        const age = Math.floor((Date.now() - new Date(selected.dateOfBirth).getTime()) / (1000 * 60 * 60 * 24 * 365.25));
-        if (age >= 0 && age <= 130) body.patientAge = age;
+      if (selected?.age != null && selected.age >= 0 && selected.age <= 130) {
+        body.patientAge = selected.age;
       }
       const r = await fetch("/api/ai/treatment-suggestions", {
         method: "POST",
@@ -386,7 +385,7 @@ export default function ConsultationPage() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-sm font-bold text-stone-900 truncate">{selected.firstName} {selected.lastName}</span>
                   <span className="text-[10px] text-stone-400 font-mono">{selected.patientCode}</span>
-                  <span className="text-[10px] text-stone-400">{selected.age}y / {genderShort(selected.gender)}</span>
+                  <span className="text-[10px] text-stone-400">{formatAge(selected)} / {genderShort(selected.gender)}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-stone-400 mt-0.5">
                   {linkedAppt && <><Badge variant="info" className="text-[9px]">{linkedAppt.type.replace("_", " ")}</Badge><span>{linkedAppt.startTime}</span></>}
@@ -448,7 +447,7 @@ export default function ConsultationPage() {
                     <Avatar name={`${selected.firstName} ${selected.lastName}`} size="md" className="ring-2 ring-blue-100" />
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-stone-900 truncate">{selected.firstName} {selected.lastName}</p>
-                      <p className="text-[10px] text-stone-400">{selected.patientCode} &middot; {selected.age}y / {genderShort(selected.gender)}</p>
+                      <p className="text-[10px] text-stone-400">{selected.patientCode} &middot; {formatAge(selected)} / {genderShort(selected.gender)}</p>
                     </div>
                   </div>
                   <div className="space-y-1 text-[11px] text-stone-500">

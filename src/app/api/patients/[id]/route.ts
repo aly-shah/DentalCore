@@ -10,6 +10,7 @@ import { logAudit } from "@/lib/audit";
 
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
+import { parsePatientAge, serializePatientAge, touchesAgeFields } from "@/lib/patient-age";
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -42,7 +43,7 @@ export async function GET(
       );
     }
 
-    return NextResponse.json({ success: true, data: patient });
+    return NextResponse.json({ success: true, data: serializePatientAge(patient) });
   } catch (error) {
     logger.api("GET", "/api/patients/[id]", error);
     return NextResponse.json(
@@ -72,17 +73,26 @@ export async function PUT(
       );
     }
 
+    // DOB and age are written as a pair so the two can never disagree; only
+    // parse when the caller actually sends one of them.
+    let ageFields = null;
+    if (touchesAgeFields(body)) {
+      const parsed = parsePatientAge(body);
+      if (!parsed.ok) {
+        return NextResponse.json({ success: false, error: parsed.error }, { status: 400 });
+      }
+      ageFields = parsed.data;
+    }
+
     const updated = await prisma.patient.update({
       where: { id },
       data: {
+        ...(ageFields ?? {}),
         ...(body.firstName !== undefined && { firstName: body.firstName }),
         ...(body.lastName !== undefined && { lastName: body.lastName }),
         ...(body.middleName !== undefined && { middleName: body.middleName }),
         ...(body.email !== undefined && { email: body.email }),
         ...(body.phone !== undefined && { phone: body.phone }),
-        ...(body.dateOfBirth !== undefined && {
-          dateOfBirth: new Date(body.dateOfBirth),
-        }),
         ...(body.gender !== undefined && { gender: body.gender }),
         ...(body.nationality !== undefined && {
           nationality: body.nationality,
@@ -131,7 +141,7 @@ export async function PUT(
       details: { patientCode: updated.patientCode },
     });
 
-    return NextResponse.json({ success: true, data: updated });
+    return NextResponse.json({ success: true, data: serializePatientAge(updated) });
   } catch (error) {
     logger.api("PUT", "/api/patients/[id]", error);
     return NextResponse.json(

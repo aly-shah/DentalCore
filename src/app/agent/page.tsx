@@ -8,7 +8,7 @@ import {
   Users, FileText, ChevronRight, X, ArrowLeft,
   Stethoscope, CreditCard,
 } from "lucide-react";
-import { cn, getClinicToday } from "@/lib/utils";
+import { cn, getClinicToday, formatAge } from "@/lib/utils";
 
 // ---- Types ----
 type Tab = "home" | "patients" | "appointments" | "more";
@@ -21,7 +21,9 @@ interface Patient {
   phone: string;
   email?: string;
   gender?: string;
-  dateOfBirth?: string;
+  dateOfBirth?: string | null;
+  age?: number | null;
+  ageIsApproximate?: boolean;
 }
 
 interface Appointment {
@@ -271,8 +273,12 @@ export default function AgentApp() {
               <span className="text-sm font-medium text-stone-900">{selectedPatient.gender || "—"}</span>
             </div>
             <div className="px-5 py-3.5 flex justify-between">
-              <span className="text-sm text-stone-500">Date of Birth</span>
-              <span className="text-sm font-medium text-stone-900">{selectedPatient.dateOfBirth ? new Date(selectedPatient.dateOfBirth).toLocaleDateString() : "—"}</span>
+              <span className="text-sm text-stone-500">{selectedPatient.dateOfBirth ? "Date of Birth" : "Age"}</span>
+              <span className="text-sm font-medium text-stone-900">
+                {selectedPatient.dateOfBirth
+                  ? new Date(selectedPatient.dateOfBirth).toLocaleDateString()
+                  : formatAge(selectedPatient)}
+              </span>
             </div>
           </div>
 

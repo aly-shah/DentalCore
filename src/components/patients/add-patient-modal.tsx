@@ -5,8 +5,12 @@ import { SlidePanel } from "@/components/ui/slide-panel";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { calculateAge } from "@/lib/utils";
 import { useCreatePatient } from "@/hooks/use-queries";
+import {
+  patientAgePayload,
+  usePatientAgeField,
+  validatePatientAge,
+} from "@/hooks/use-patient-age-field";
 import { useModuleEmit } from "@/modules/core/hooks";
 import { SystemEvents } from "@/modules/core/events";
 import { useAuth } from "@/lib/auth-context";
@@ -25,6 +29,7 @@ const initialForm = {
   firstName: "",
   lastName: "",
   dateOfBirth: "",
+  age: "",
   gender: "",
   phone: "",
   email: "",
@@ -47,7 +52,7 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
   const [success, setSuccess] = useState(false);
   const [newPatientId, setNewPatientId] = useState("");
 
-  const age = form.dateOfBirth ? calculateAge(form.dateOfBirth) : null;
+  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof initialForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -59,7 +64,8 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
     if (!form.firstName.trim()) { setError("First name is required"); return; }
     if (!form.lastName.trim()) { setError("Last name is required"); return; }
     if (!form.phone.trim()) { setError("Phone number is required"); return; }
-    if (!form.dateOfBirth) { setError("Date of birth is required"); return; }
+    const ageError = validatePatientAge(form);
+    if (ageError) { setError(ageError); return; }
     if (!form.gender) { setError("Please select gender"); return; }
     setError("");
 
@@ -67,7 +73,7 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
       const result = await createPatient.mutateAsync({
         firstName: form.firstName.trim(),
         lastName: form.lastName.trim(),
-        dateOfBirth: form.dateOfBirth,
+        ...patientAgePayload(form),
         gender: form.gender,
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
@@ -186,22 +192,26 @@ export function AddPatientModal({ isOpen, onClose }: AddPatientModalProps) {
             </div>
           </div>
 
-          {/* DOB + Age */}
+          {/* DOB or Age — exact birthday preferred, age accepted when unknown */}
           <div>
             <div className="flex items-center gap-2 mb-2">
               <Heart className="w-4 h-4 text-rose-400" />
-              <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Date of Birth</span>
+              <span className="text-xs font-semibold text-stone-400 uppercase tracking-wider">Date of Birth *</span>
             </div>
-            <div className="flex gap-3 items-end">
+            <div className="flex gap-3 items-center">
               <div className="flex-1">
-                <Input type="date" value={form.dateOfBirth} onChange={set("dateOfBirth")} />
+                <Input type="date" value={form.dateOfBirth} onChange={onDobChange} />
               </div>
-              {age !== null && (
-                <div className="shrink-0 px-4 py-2.5 bg-blue-50 border border-blue-200 rounded-xl text-center">
-                  <span className="text-lg font-bold text-blue-700">{age}</span>
-                  <span className="text-xs text-blue-500 ml-1">years</span>
-                </div>
-              )}
+              <span className="shrink-0 text-xs text-stone-400">or</span>
+              <div className="shrink-0 w-28">
+                <Input
+                  inputMode="numeric"
+                  placeholder="Age"
+                  value={ageValue}
+                  onChange={onAgeChange}
+                  iconRight={<span className="text-xs text-stone-400">yrs</span>}
+                />
+              </div>
             </div>
           </div>
 

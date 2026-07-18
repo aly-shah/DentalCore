@@ -23,7 +23,7 @@ export async function GET(
       where: { id },
       include: {
         items: true,
-        patient: { select: { id: true, firstName: true, lastName: true, patientCode: true, phone: true, dateOfBirth: true, gender: true, allergies: { select: { allergen: true } } } },
+        patient: { select: { id: true, firstName: true, lastName: true, patientCode: true, phone: true, dateOfBirth: true, age: true, ageRecordedAt: true, gender: true, allergies: { select: { allergen: true } } } },
         doctor: { select: { id: true, name: true, speciality: true, licenseNumber: true } },
         appointment: { select: { id: true, appointmentCode: true, date: true } },
       },

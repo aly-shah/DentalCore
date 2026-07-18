@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
+import { resolvePatientAge } from "@/lib/utils";
 import { analyzeToothChart, type ToothInput } from "@/lib/ai/tooth-findings";
 
 const toothSchema = z.object({
@@ -64,9 +65,7 @@ export async function POST(request: Request) {
       where: { id: parsed.data.patientId },
       include: { allergies: true },
     });
-    const patientAge = patient?.dateOfBirth
-      ? Math.floor((Date.now() - patient.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-      : undefined;
+    const patientAge = patient ? resolvePatientAge(patient) ?? undefined : undefined;
     const allergies = patient?.allergies?.map((a) => a.allergen) ?? [];
 
     const result = await analyzeToothChart(

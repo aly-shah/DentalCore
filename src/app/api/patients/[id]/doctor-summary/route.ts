@@ -8,6 +8,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
+import { resolvePatientAge } from "@/lib/utils";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireAuth();
@@ -90,9 +91,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     ]);
 
     const outstandingBalance = openInvoices.reduce((s, i) => s + (i.balanceDue ?? 0), 0);
-    const age = patient.dateOfBirth
-      ? Math.floor((Date.now() - patient.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-      : null;
+    const age = resolvePatientAge(patient);
 
     return NextResponse.json({
       success: true,

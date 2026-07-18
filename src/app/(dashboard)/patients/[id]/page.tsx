@@ -16,7 +16,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { PortalLinkButton } from "@/components/patients/portal-link-button";
 import { LoadingSpinner } from "@/components/ui/loading";
 import { usePatient, usePatientTags, useAddPatientTag, useRemovePatientTag } from "@/hooks/use-queries";
-import { formatDate, formatCurrency, calculateAge } from "@/lib/utils";
+import { formatDate, formatCurrency, formatAge } from "@/lib/utils";
 import { useModuleAccess } from "@/modules/core/hooks";
 import { ModuleActionGate } from "@/modules/core/components";
 import { cn } from "@/lib/utils";
@@ -53,7 +53,8 @@ import type { Patient } from "@/types";
 // ---- API Patient shape ----
 interface ApiPatient {
   id: string; patientCode: string; firstName: string; middleName?: string | null;
-  lastName: string; email?: string | null; phone: string; dateOfBirth: string;
+  lastName: string; email?: string | null; phone: string;
+  dateOfBirth: string | null; age: number | null; ageIsApproximate?: boolean;
   gender: string; bloodType?: string | null; skinType?: string | null;
   address?: string | null; city?: string | null; notes?: string | null;
   isActive: boolean; isVip?: boolean; createdAt: string;
@@ -64,11 +65,11 @@ interface ApiPatient {
   medicalHistory?: { id: string; condition: string; status: string }[];
 }
 
-function normalize(raw: ApiPatient): Patient & { assignedDoctorName: string; age: number; allergies: string[] } {
+function normalize(raw: ApiPatient): Patient & { assignedDoctorName: string; allergies: string[] } {
   return {
     id: raw.id, patientCode: raw.patientCode, firstName: raw.firstName, lastName: raw.lastName,
     email: raw.email || "", phone: raw.phone, dateOfBirth: raw.dateOfBirth,
-    age: raw.dateOfBirth ? calculateAge(raw.dateOfBirth) : 0,
+    age: raw.age, ageIsApproximate: raw.ageIsApproximate,
     gender: raw.gender as Patient["gender"], address: raw.address || "", city: raw.city || "",
     emergencyContact: "", emergencyPhone: "", bloodType: raw.bloodType || "",
     branchId: raw.branch?.id || "", branchName: raw.branch?.name,
@@ -194,7 +195,7 @@ export default function PatientProfilePage({ params }: { params: Promise<{ id: s
               <Badge variant={patient.isActive ? "success" : "default"} className="text-[10px]" dot>{patient.isActive ? "Active" : "Inactive"}</Badge>
             </div>
             <div className="flex items-center gap-3 mt-0.5 text-xs text-stone-400">
-              <span>{patient.age}y / {genderShort}</span>
+              <span>{formatAge(patient)} / {genderShort}</span>
               <span>{patient.phone}</span>
               {patient.assignedDoctorName !== "Unassigned" && <span className="hidden sm:inline">{patient.assignedDoctorName}</span>}
             </div>

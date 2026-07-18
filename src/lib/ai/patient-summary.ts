@@ -8,6 +8,7 @@
  */
 import crypto from "node:crypto";
 import { Prisma } from "@prisma/client";
+import { resolvePatientAge } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 import { getOpenAI, priceCents } from "./openai";
@@ -123,9 +124,7 @@ async function buildSnapshot(patientId: string) {
     }),
   ]);
 
-  const age = patient.dateOfBirth
-    ? Math.floor((Date.now() - patient.dateOfBirth.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-    : null;
+  const age = resolvePatientAge(patient);
 
   const noShowCount = recentAppts.filter((a) => a.status === "NO_SHOW").length;
   const outstandingBalance = recentInvoices.reduce((s, i) => s + (i.balanceDue ?? 0), 0);

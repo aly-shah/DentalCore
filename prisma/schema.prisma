@@ -190,6 +190,10 @@ model Patient {
   email              String?
   phone              String?
   dateOfBirth        DateTime?
+  // Set when only an approximate age was known at registration; dateOfBirth is
+  // then null. Read both through resolvePatientAge() — a bare `age` goes stale.
+  age                Int?
+  ageRecordedAt      DateTime?
   gender             Gender    @default(OTHER)
   nationality        String?
   address            String?

@@ -177,8 +177,12 @@ export interface Patient {
   lastName: string;
   email: string;
   phone: string;
-  dateOfBirth: string;
-  age: number;
+  /** Null when only an approximate age was recorded. */
+  dateOfBirth: string | null;
+  /** Age today, resolved by the API from `dateOfBirth` or the stored age. */
+  age: number | null;
+  /** True when `age` is an estimate rather than derived from a real birthday. */
+  ageIsApproximate?: boolean;
   gender: Gender;
   address: string;
   city: string;

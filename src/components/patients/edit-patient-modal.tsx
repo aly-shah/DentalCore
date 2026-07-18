@@ -6,8 +6,12 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { calculateAge } from "@/lib/utils";
 import { useUpdatePatient } from "@/hooks/use-queries";
+import {
+  patientAgePayload,
+  usePatientAgeField,
+  validatePatientAge,
+} from "@/hooks/use-patient-age-field";
 import { useModuleEmit } from "@/modules/core/hooks";
 import { SystemEvents } from "@/modules/core/events";
 import type { Patient } from "@/types";
@@ -23,7 +27,10 @@ function buildFormFromPatient(patient: Patient) {
     firstName: patient.firstName || "",
     middleName: (patient as unknown as Record<string, unknown>).middleName as string || "",
     lastName: patient.lastName || "",
-    dateOfBirth: patient.dateOfBirth || "",
+    // A patient has an exact DOB or an approximate age, never both. `age` from
+    // the API is already resolved to today, so re-saving restamps it correctly.
+    dateOfBirth: patient.dateOfBirth ? String(patient.dateOfBirth).slice(0, 10) : "",
+    age: !patient.dateOfBirth && patient.age != null ? String(patient.age) : "",
     gender: patient.gender || "",
     phone: patient.phone || "",
     email: patient.email || "",
@@ -57,7 +64,7 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
     }
   }
 
-  const age = form.dateOfBirth ? calculateAge(form.dateOfBirth) : "";
+  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof form) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -71,7 +78,8 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
     if (!form.firstName.trim()) return "First name is required";
     if (!form.lastName.trim()) return "Last name is required";
     if (!form.phone.trim()) return "Phone number is required";
-    if (!form.dateOfBirth) return "Date of birth is required";
+    const ageError = validatePatientAge(form);
+    if (ageError) return ageError;
     if (!form.gender) return "Gender is required";
     return null;
   };
@@ -91,7 +99,7 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
           firstName: form.firstName.trim(),
           middleName: form.middleName.trim() || undefined,
           lastName: form.lastName.trim(),
-          dateOfBirth: form.dateOfBirth,
+          ...patientAgePayload(form),
           gender: form.gender,
           phone: form.phone.trim(),
           email: form.email.trim() || undefined,
@@ -154,8 +162,8 @@ export function EditPatientModal({ isOpen, onClose, patient }: EditPatientModalP
               <Input label="Last Name" placeholder="Last name" required value={form.lastName} onChange={set("lastName")} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Date of Birth" type="date" required value={form.dateOfBirth} onChange={set("dateOfBirth")} />
-              <Input label="Age" value={age !== "" ? String(age) : ""} readOnly placeholder="Auto-calculated" />
+              <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText="Or enter age →" />
+              <Input label="Age" inputMode="numeric" value={ageValue} onChange={onAgeChange} placeholder="e.g. 32" helperText={form.dateOfBirth ? "From date of birth" : "Years"} />
               <Select
                 label="Gender"
                 required

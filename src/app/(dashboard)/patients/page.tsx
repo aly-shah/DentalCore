@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { SearchInput } from "@/components/ui/search-input";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatDate, formatCurrency, formatAge } from "@/lib/utils";
 import { AddPatientModal } from "@/components/patients/add-patient-modal";
 import { CreateAppointmentModal } from "@/components/appointments/create-appointment-modal";
 import { useModuleAccess } from "@/modules/core/hooks";
@@ -279,7 +279,7 @@ export default function PatientsPage() {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 mt-0.5 text-xs text-stone-400">
                       <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{p.phone}</span>
-                      <span>{p.age}y / {genderShort(p.gender)}</span>
+                      <span>{formatAge(p)} / {genderShort(p.gender)}</span>
                       {p.lastVisit && <span className="hidden sm:flex items-center gap-1"><Clock className="w-3 h-3" />Last: {formatDate(p.lastVisit)}</span>}
                     </div>
                   </div>
@@ -309,7 +309,7 @@ export default function PatientsPage() {
                     <Avatar name={`${p.firstName} ${p.lastName}`} size="md" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-stone-900 truncate">{p.firstName} {p.lastName}</p>
-                      <p className="text-[11px] text-stone-400">{p.patientCode} &middot; {p.age}y / {genderShort(p.gender)}</p>
+                      <p className="text-[11px] text-stone-400">{p.patientCode} &middot; {formatAge(p)} / {genderShort(p.gender)}</p>
                     </div>
                     <Badge variant={p.isActive ? "success" : "default"} className="text-[10px]" dot>{p.isActive ? "Active" : "—"}</Badge>
                   </div>
@@ -373,7 +373,7 @@ export default function PatientsPage() {
               <div className="px-5 pb-4 text-center -mt-2">
                 <Avatar name={`${selectedPatient.firstName} ${selectedPatient.lastName}`} size="xl" className="mx-auto ring-4 ring-blue-100 w-16 h-16" />
                 <h3 className="text-lg font-bold text-stone-900 mt-3">{selectedPatient.firstName} {selectedPatient.lastName}</h3>
-                <p className="text-xs text-stone-400 mt-0.5">{selectedPatient.patientCode} &middot; {selectedPatient.age}y / {genderShort(selectedPatient.gender)}</p>
+                <p className="text-xs text-stone-400 mt-0.5">{selectedPatient.patientCode} &middot; {formatAge(selectedPatient)} / {genderShort(selectedPatient.gender)}</p>
 
                 {/* Contact pills */}
                 <div className="flex items-center justify-center gap-2 mt-3">

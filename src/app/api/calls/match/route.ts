@@ -37,7 +37,7 @@ export async function GET(request: Request) {
       },
       select: {
         id: true, patientCode: true, firstName: true, lastName: true, phone: true,
-        gender: true, dateOfBirth: true, email: true,
+        gender: true, dateOfBirth: true, age: true, ageRecordedAt: true, email: true,
         assignedDoctor: { select: { id: true, name: true } },
         branch: { select: { id: true, name: true } },
         allergies: { select: { allergen: true } },

@@ -5,7 +5,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
-import { CLINIC_TZ } from "@/lib/utils";
+import { CLINIC_TZ, isAgeApproximate, resolvePatientAge } from "@/lib/utils";
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
 export async function GET(
@@ -25,7 +25,7 @@ export async function GET(
         patient: {
           select: {
             firstName: true, lastName: true, patientCode: true,
-            phone: true, dateOfBirth: true, gender: true,
+            phone: true, dateOfBirth: true, age: true, ageRecordedAt: true, gender: true,
             allergies: { select: { allergen: true, severity: true } },
           },
         },
@@ -40,8 +40,8 @@ export async function GET(
 
     const p = prescription.patient;
     const d = prescription.doctor;
-    const dob = p.dateOfBirth ? new Date(p.dateOfBirth) : null;
-    const age = dob ? Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : "—";
+    const resolvedAge = resolvePatientAge(p);
+    const age = resolvedAge == null ? "—" : `${isAgeApproximate(p) ? "~" : ""}${resolvedAge}`;
     const gender = p.gender === "MALE" ? "M" : p.gender === "FEMALE" ? "F" : "O";
     const allergies = p.allergies.map((a) => a.allergen).join(", ") || "None reported";
     const date = new Date(prescription.createdAt).toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric", timeZone: CLINIC_TZ });

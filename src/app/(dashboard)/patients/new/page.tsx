@@ -10,8 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { calculateAge } from "@/lib/utils";
 import { useCreatePatient } from "@/hooks/use-queries";
+import {
+  patientAgePayload,
+  usePatientAgeField,
+  validatePatientAge,
+} from "@/hooks/use-patient-age-field";
 import { useModuleAccess, useModuleEmit } from "@/modules/core/hooks";
 import { SystemEvents } from "@/modules/core/events";
 import { useAuth } from "@/lib/auth-context";
@@ -21,6 +25,7 @@ const initialForm = {
   middleName: "",
   lastName: "",
   dateOfBirth: "",
+  age: "",
   gender: "",
   phone: "",
   email: "",
@@ -49,7 +54,7 @@ export default function NewPatientPage() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
 
-  const age = form.dateOfBirth ? calculateAge(form.dateOfBirth) : "";
+  const { ageValue, onDobChange, onAgeChange } = usePatientAgeField(form, setForm);
 
   const set = (field: keyof typeof initialForm) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
@@ -59,7 +64,8 @@ export default function NewPatientPage() {
     if (!form.firstName.trim()) return "First name is required";
     if (!form.lastName.trim()) return "Last name is required";
     if (!form.phone.trim()) return "Phone number is required";
-    if (!form.dateOfBirth) return "Date of birth is required";
+    const ageError = validatePatientAge(form);
+    if (ageError) return ageError;
     if (!form.gender) return "Gender is required";
     return null;
   };
@@ -74,7 +80,7 @@ export default function NewPatientPage() {
         firstName: form.firstName.trim(),
         middleName: form.middleName.trim() || undefined,
         lastName: form.lastName.trim(),
-        dateOfBirth: form.dateOfBirth,
+        ...patientAgePayload(form),
         gender: form.gender,
         phone: form.phone.trim(),
         email: form.email.trim() || undefined,
@@ -175,8 +181,8 @@ export default function NewPatientPage() {
                   <Input label="Last Name" placeholder="Last name" required value={form.lastName} onChange={set("lastName")} />
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <Input label="Date of Birth" type="date" required value={form.dateOfBirth} onChange={set("dateOfBirth")} />
-                  <Input label="Age" value={age !== "" ? String(age) : ""} readOnly placeholder="Auto" />
+                  <Input label="Date of Birth" type="date" value={form.dateOfBirth} onChange={onDobChange} helperText="Or enter age →" />
+                  <Input label="Age" inputMode="numeric" value={ageValue} onChange={onAgeChange} placeholder="e.g. 32" helperText={form.dateOfBirth ? "From date of birth" : "Years"} />
                   <Select label="Gender" required placeholder="Select" value={form.gender} onChange={set("gender")}
                     options={[{ value: "MALE", label: "Male" }, { value: "FEMALE", label: "Female" }, { value: "OTHER", label: "Other" }]} />
                 </div>

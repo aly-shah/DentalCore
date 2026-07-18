@@ -10,6 +10,7 @@ import { logAudit } from "@/lib/audit";
 
 import { requireAuth } from "@/lib/require-auth";
 import { logger } from "@/lib/logger";
+import { parsePatientAge, serializePatientAge } from "@/lib/patient-age";
 export async function GET(request: Request) {
   try {
     const auth = await requireAuth();
@@ -88,7 +89,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       success: true,
-      data,
+      data: data.map(serializePatientAge),
       pagination: {
         page,
         limit,
@@ -125,11 +126,17 @@ export async function POST(request: Request) {
     }
 
     // Validate required fields
-    if (!body.firstName || !body.lastName || !body.phone || !body.dateOfBirth || !body.gender) {
+    if (!body.firstName || !body.lastName || !body.phone || !body.gender) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: firstName, lastName, phone, dateOfBirth, gender" },
+        { success: false, error: "Missing required fields: firstName, lastName, phone, gender" },
         { status: 400 }
       );
+    }
+
+    // Age is recorded as either an exact DOB or an approximate age.
+    const ageFields = parsePatientAge(body);
+    if (!ageFields.ok) {
+      return NextResponse.json({ success: false, error: ageFields.error }, { status: 400 });
     }
 
     // Ensure branchId — fall back to first active branch if not provided
@@ -159,7 +166,7 @@ export async function POST(request: Request) {
         middleName: body.middleName || null,
         email: body.email || null,
         phone: body.phone,
-        dateOfBirth: new Date(body.dateOfBirth),
+        ...ageFields.data,
         gender: body.gender,
         nationality: body.nationality || null,
         address: body.address || null,
@@ -210,7 +217,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json(
-      { success: true, data: patient },
+      { success: true, data: serializePatientAge(patient) },
       { status: 201 }
     );
   } catch (error) {

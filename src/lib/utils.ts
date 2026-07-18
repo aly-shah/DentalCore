@@ -84,6 +84,53 @@ export function calculateAge(dob: string | Date): number {
   return age;
 }
 
+export const MIN_PATIENT_AGE = 0;
+export const MAX_PATIENT_AGE = 130;
+
+/**
+ * Resolve a patient's age in years from either an exact date of birth or an
+ * approximate age captured at registration. Returns null when neither is known.
+ *
+ * A stored `age` is only true as of `ageRecordedAt`, so elapsed whole years are
+ * added back; without that it would silently under-report as time passes.
+ */
+export function resolvePatientAge(patient: {
+  dateOfBirth?: string | Date | null;
+  age?: number | null;
+  ageRecordedAt?: string | Date | null;
+}): number | null {
+  if (patient.dateOfBirth) return calculateAge(patient.dateOfBirth);
+  if (patient.age == null) return null;
+  if (!patient.ageRecordedAt) return patient.age;
+  return patient.age + calculateAge(patient.ageRecordedAt);
+}
+
+/** True when the age is an estimate (no exact DOB on file) — render as "~32". */
+export function isAgeApproximate(patient: {
+  dateOfBirth?: string | Date | null;
+  age?: number | null;
+}): boolean {
+  return !patient.dateOfBirth && patient.age != null;
+}
+
+/**
+ * Render a patient's age for display, e.g. "32y", "~32y" when it's an estimate,
+ * or "—" when unknown. Expects an API patient, whose `age` is already resolved.
+ */
+export function formatAge(patient: {
+  age?: number | null;
+  ageIsApproximate?: boolean;
+}): string {
+  if (patient.age == null) return "—";
+  return `${patient.ageIsApproximate ? "~" : ""}${patient.age}y`;
+}
+
+/** Midyear DOB implied by an age — for date math only, never display it. */
+export function approximateDobFromAge(age: number): Date {
+  const d = new Date();
+  return new Date(d.getFullYear() - age, 6, 1);
+}
+
 export function calculateBMI(weightKg: number, heightCm: number): string {
   const heightM = heightCm / 100;
   const bmi = weightKg / (heightM * heightM);
